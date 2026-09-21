@@ -104,6 +104,12 @@ export const DEFAULT_CONFIG = {
   security: {
     allowPrivateImageHosts: false           // true 时图片下载允许内网地址（仅本地测试/自建图床）
   },
+  // 本机移植版默认不访问原上游作者的在线服务。确有需要时由用户显式开启。
+  externalServices: {
+    telemetryEnabled: false,
+    updateCheckEnabled: false,
+    communityEnabled: false
+  },
   // QQ 协议端 / OneBot v11。
   // macOS 默认连接由官方 NapCat Mac Installer 安装的独立 NapCat，QQ Agent
   // 只负责启动、停止、状态展示和 OneBot 连接，不修改 QQ.app，也不打包协议端。

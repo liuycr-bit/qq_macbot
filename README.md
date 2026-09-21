@@ -20,6 +20,8 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 | macOS 移植方案 | 已完成 | 已确定 Electron + 独立 NapCat + OneBot v11 的实现路线 |
 | macOS 连接管理基础代码 | 已完成 | 已增加 QQ/NapCat 路径探测、状态读取、启停确认、WebUI 打开和 OneBot 配置候选读取 |
 | “QQ 连接”控制界面 | 已完成 | 已替换原 Windows SnowLuma 控制入口，展示 QQ、NapCat、登录和 OneBot 状态 |
+| 本机联调体检 | 已完成 | 只读检查 QQ、NapCat、加载器、入口、配置和 OneBot 双端口，并提示下一步 |
+| 本地隐私边界 | 已完成 | 上游遥测、更新检查和社区上传在本机移植版中默认关闭 |
 | 外部 OneBot 模式 | 已保留 | 可填写自定义 WebSocket、HTTP 地址和访问令牌 |
 | Apple Silicon 构建配置 | 已写入 | 提供 arm64 `.app`、DMG 和 ZIP 构建命令，但本阶段未执行构建 |
 | NapCat 本机安装 | 未执行 | 本仓库不自动安装、不注入 NapCat，也不修改 `QQ.app` |
@@ -56,6 +58,7 @@ QQ Agent Mac
 - **退出应用不退出 QQ**：关闭 QQ Agent 不会连带终止 QQ/NapCat。
 - **模型供应商不锁定**：保留 OpenAI 兼容接口，不把 NapCat 与特定模型厂商绑定。
 - **敏感数据不入库**：真实 API Key、QQ 登录态、聊天存档和长期记忆不得提交到 Git。
+- **外部服务默认关闭**：原上游遥测、更新检查、意见和金句上传不会在本机版中自动访问，只有用户在设置中明确开启后才启用。
 
 ## 第一阶段的移植改动
 
@@ -67,6 +70,7 @@ QQ Agent Mac
 - 将界面中的 SnowLuma 页面改为“QQ 连接”，增加 NapCat、QQ、WebUI 和 OneBot 状态及操作入口。
 - 调整 Electron 的 macOS 数据目录、托盘图标、硬件加速和启动行为。
 - 增加 Apple Silicon 的本机构建配置，以及第一阶段设计和 macOS 部署文档。
+- 增加只读的本机联调体检，并将非必要的上游在线服务改为默认关闭。
 
 ## 继承的上游能力
 

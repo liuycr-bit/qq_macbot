@@ -984,9 +984,10 @@ async function refreshSnowlumaLogs() {
 
 async function loadSnowlumaPage({ quiet = false } = {}) {
   try {
-    const [status, logs] = await Promise.all([
+    const [status, logs, diagnosis] = await Promise.all([
       api('/api/status'),
-      api('/api/connector/logs')
+      api('/api/connector/logs'),
+      api('/api/connector/diagnose')
     ]);
     const s = status;
     const box = $('#snowluma-page');
@@ -1006,6 +1007,13 @@ async function loadSnowlumaPage({ quiet = false } = {}) {
       const t = new Date(l.at).toLocaleTimeString('zh-CN', { hour12: false });
       return `[${t}]${l.stream === 'stderr' ? ' ⚠' : ''} ${l.text}`;
     }).join('\n') || '暂无日志';
+    const diagnosticChecks = Array.isArray(diagnosis.checks) ? diagnosis.checks : [];
+    const diagnosticHtml = diagnosticChecks.map((item) => `
+      <div class="snowluma-state-row">
+        <span class="dot ${item.ok ? 'dot-on' : (item.required ? 'dot-off' : '')}"></span>
+        <span><strong>${esc(item.label)}</strong>：${esc(item.detail || (item.ok ? '正常' : '未就绪'))}</span>
+        ${!item.ok && item.action ? `<span class="muted">${esc(item.action)}</span>` : ''}
+      </div>`).join('');
 
     // 整页重建前记住日志滚动位置：SSE/轮询触发的 quiet 重建会重置 DOM，
     // 不补偿的话用户往下翻日志会被弹回顶部（Kondius 实测：划两下就蹦上去）
@@ -1053,6 +1061,14 @@ async function loadSnowlumaPage({ quiet = false } = {}) {
           <button class="btn btn-small" id="sl-open-folder-btn">打开 NapCat 文件夹</button>
           ${installed && patched ? '' : '<button class="btn btn-small" id="sl-installer-btn">打开官方 Mac 安装器</button>'}
           <span id="sl-hint" class="muted" style="font-size:12px"></span>
+        </div>
+        <div style="margin:14px 0">
+          <div class="hint" style="margin-bottom:6px">
+            <strong>本机联调体检：${diagnosis.ready ? '协议层已就绪' : '仍有必需项未完成'}</strong>
+            · ${esc(diagnosis.mode === 'external-onebot' ? '外部 OneBot 模式' : 'macOS NapCat 模式')}
+          </div>
+          ${diagnosticHtml || '<div class="muted">暂无体检结果</div>'}
+          <div class="hint" style="margin-top:6px">下一步：${esc(diagnosis.nextAction || '重新连接 OneBot。')}</div>
         </div>
         <div>
           <div class="hint" style="margin-bottom:6px">连接管理日志（仅保留最近 500 行；NapCat 完整日志请在 WebUI 查看）</div>
@@ -3241,6 +3257,7 @@ return `
 }
 
 function renderDesktopSection(c) {
+  const external = c.externalServices || {};
   return `
     <h3>桌面端</h3>
     <div class="checkbox-row"><input type="checkbox" id="cfg-autostart" ${c.server?.autoStart ? 'checked' : ''} />
@@ -3260,11 +3277,19 @@ function renderDesktopSection(c) {
     <div class="checkbox-row"><input type="checkbox" id="cfg-showvision" ${c.ui?.showVision !== false ? 'checked' : ''} />
       <label for="cfg-showvision">模型目录显示“支持图片输入/不支持图片输入”徽标</label></div>
     <div class="field"><label>界面刷新间隔（毫秒）</label><input type="number" id="cfg-refreshms" min="1000" step="1000" value="${esc(c.ui?.refreshMs ?? 15000)}" /></div>
-    <h3>版本更新</h3>
+    <h3>上游在线服务（本机版默认关闭）</h3>
+    <div class="hint" style="margin-bottom:8px">以下功能会访问原上游作者的 kondius.cn 服务，不属于本机运行所必需的能力。</div>
+    <div class="checkbox-row"><input type="checkbox" id="cfg-ext-telemetry" ${external.telemetryEnabled === true ? 'checked' : ''} />
+      <label for="cfg-ext-telemetry">允许发送匿名用量统计（重启后生效）</label></div>
+    <div class="checkbox-row"><input type="checkbox" id="cfg-ext-update" ${external.updateCheckEnabled === true ? 'checked' : ''} />
+      <label for="cfg-ext-update">允许检查原上游版本信息</label></div>
+    <div class="checkbox-row"><input type="checkbox" id="cfg-ext-community" ${external.communityEnabled === true ? 'checked' : ''} />
+      <label for="cfg-ext-community">显示并启用原上游社区、意见和金句上传入口</label></div>
+    <h3>版本信息</h3>
     <div class="field"><label>当前版本 <b id="update-current">…</b><span id="update-status-text">${updateAvailable ? '<b style="color:var(--warn)">；发现新版本</b>' : '；检查线上是否有新版本'}</span></label>
       <div style="display:flex;gap:10px;align-items:center">
-        <button class="btn btn-small" id="check-update-btn">检查更新</button>
-        <span class="hint" id="update-hint" style="margin:0"></span>
+        <button class="btn btn-small" id="check-update-btn" ${external.updateCheckEnabled === true ? '' : 'disabled'}>检查原上游更新</button>
+        <span class="hint" id="update-hint" style="margin:0">${external.updateCheckEnabled === true ? '' : '本地模式已关闭'}</span>
       </div></div>`;
 }
 
@@ -4709,6 +4734,12 @@ async function saveConfig({ quiet = false } = {}) {
       showVision: chk('#cfg-showvision', c.ui?.showVision !== false),
       refreshMs: Number(val('#cfg-refreshms', c.ui?.refreshMs ?? 15000)) || 15000
     };
+    patch.externalServices = {
+      ...(c.externalServices || {}),
+      telemetryEnabled: chk('#cfg-ext-telemetry', c.externalServices?.telemetryEnabled === true),
+      updateCheckEnabled: chk('#cfg-ext-update', c.externalServices?.updateCheckEnabled === true),
+      communityEnabled: chk('#cfg-ext-community', c.externalServices?.communityEnabled === true)
+    };
     patch.memberNotes = {
       ...(c.memberNotes || {})
     };
@@ -4734,6 +4765,7 @@ async function saveConfig({ quiet = false } = {}) {
 
   const data = await api('/api/config', { method: 'POST', body: JSON.stringify(patch) });
   state.config = data.config;
+  syncExternalServiceUI();
   if (!quiet) $('#model-label').textContent = `模型：${state.config.api.model || '未设置'}`;
   return data;
 }
@@ -4747,6 +4779,18 @@ async function saveConfig({ quiet = false } = {}) {
    （意见和金句本来就是发给作者看的）。
 */
 const COMMUNITY_API = 'https://kondius.cn/qq-agent/api';
+
+function externalServiceEnabled(name) {
+  return state.config?.externalServices?.[name] === true;
+}
+
+function syncExternalServiceUI() {
+  const communityEnabled = externalServiceEnabled('communityEnabled');
+  for (const id of ['quote-btn', 'feedback-btn', 'open-site-btn', 'quote-confirm-btn']) {
+    const el = $(`#${id}`);
+    if (el) el.classList.toggle('hidden', !communityEnabled);
+  }
+}
 
 /** 统一的提示小模态框（替代 alert —— 原生对话框与 UI 风格割裂）。 */
 function showNoticeModal(title, text) {
@@ -4932,6 +4976,10 @@ function fbCompressImage(file) {
 }
 
 function openFeedbackModal() {
+  if (!externalServiceEnabled('communityEnabled')) {
+    showNoticeModal('本地模式', '本机移植版默认关闭上游社区服务，不会上传意见、图片或聊天内容。');
+    return;
+  }
   const draft = fbLoadDraft();
   const state2 = { images: draft.images.slice() };   // 弹窗内的图片列表（dataURL）
 
@@ -5081,6 +5129,7 @@ function openFeedbackModal() {
 // Electron 里 window.open 会被 main.js 的 setWindowOpenHandler 转给系统默认浏览器；
 // 开发模式（纯浏览器）则正常开新标签页。
 function openSite() {
+  if (!externalServiceEnabled('communityEnabled')) return;
   window.open('https://kondius.cn/qq-agent', '_blank', 'noopener');
 }
 
@@ -5149,6 +5198,10 @@ function syncQuoteButtons() {
 }
 
 function enterQuoteMode() {
+  if (!externalServiceEnabled('communityEnabled')) {
+    showNoticeModal('本地模式', '本机移植版默认关闭金句上传，不会把聊天内容发送到外部服务器。');
+    return;
+  }
   state.quoteMode = true;
   state.quoteSelected = new Set();
   syncQuoteButtons();
@@ -5306,15 +5359,19 @@ $$('.tab').forEach((tab) => {
   // 启动 loading：先等 HTTP 服务可用（页面可能先于服务打开）
   setLoadingStatus('正在启动 QQ Agent 服务…');
   await bootLoop();
-  runUpdateCheck();                                 // 启动时静默查一次（失败不打扰）
-  setInterval(() => runUpdateCheck(), 3600_000);    // 之后每小时查一次
 
   // 主题：以后端配置为准（跨设备同步），仅当后端确实存过才覆盖本地
   try {
     const cfg0 = await api('/api/config');
+    state.config = cfg0;
+    syncExternalServiceUI();
     const t = cfg0?.ui?.theme;
     if (THEME_VALUES.includes(t)) applyTheme(t);
     else if (cfg0 && !('ui' in cfg0)) { /* 后端还没这个字段，保持本地值 */ }
+    if (cfg0?.externalServices?.updateCheckEnabled === true) {
+      runUpdateCheck();
+      setInterval(() => runUpdateCheck(), 3600_000);
+    }
   } catch { /* 接口不可用就用本地的 */ }
 
   // 首启引导：关键配置（模型/白名单）没填就直接带去设置页

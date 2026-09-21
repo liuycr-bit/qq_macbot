@@ -126,6 +126,8 @@ export class ConnectorManager {
       qqAppPath,
       qqExecutable: path.join(qqAppPath, 'Contents', 'MacOS', 'QQ'),
       qqPackageFile: path.join(qqAppPath, 'Contents', 'Resources', 'app', 'package.json'),
+      qqPackageBackupFile: path.join(qqAppPath, 'Contents', 'Resources', 'app', 'package.json.bak'),
+      napcatLoaderFile: path.join(container, 'Documents', 'loadNapCat.js'),
       napcatRoot,
       napcatDataDir,
       napcatConfigDir
@@ -218,14 +220,27 @@ export class ConnectorManager {
 
   installationStatus() {
     const p = this.paths();
-    const napcatPackage = readJson(path.join(p.napcatRoot, 'package.json'));
+    const napcatPackageFile = path.join(p.napcatRoot, 'package.json');
+    const napcatPackage = readJson(napcatPackageFile);
     const qqPackage = readJson(p.qqPackageFile);
     const main = String(qqPackage?.main || '');
     return {
       qqInstalled: fs.existsSync(p.qqExecutable),
+      qqExecutableReady: (() => {
+        try {
+          fs.accessSync(p.qqExecutable, fs.constants.X_OK);
+          return true;
+        } catch {
+          return false;
+        }
+      })(),
       napcatInstalled: !!napcatPackage,
       napcatVersion: String(napcatPackage?.version || ''),
+      napcatPackageFile,
+      loaderInstalled: fs.existsSync(p.napcatLoaderFile),
       entryPatched: main.includes('loadNapCat.js'),
+      entryMain: main,
+      entryBackupAvailable: fs.existsSync(p.qqPackageBackupFile),
       installerUrl: NAPCAT_INSTALLER_URL
     };
   }
@@ -234,10 +249,13 @@ export class ConnectorManager {
     const cfg = this.config();
     const p = this.paths();
     const wsUrl = String(cfg.wsUrl || 'ws://127.0.0.1:3001');
-    const [pids, onebotReady] = await Promise.all([
+    const httpUrl = String(cfg.httpUrl || 'http://127.0.0.1:3000');
+    const [pids, onebotReady, onebotHttpReady] = await Promise.all([
       this.qqPids(),
-      isPortOpen(endpointHost(wsUrl), endpointPort(wsUrl, 3001))
+      isPortOpen(endpointHost(wsUrl), endpointPort(wsUrl, 3001)),
+      isPortOpen(endpointHost(httpUrl), endpointPort(httpUrl, 3000))
     ]);
+    const onebotConfigFiles = this.onebotConfigFiles();
     return {
       type: String(cfg.type || (process.platform === 'darwin' ? 'napcat-macos' : 'external-onebot')),
       platform: process.platform,
@@ -246,9 +264,58 @@ export class ConnectorManager {
       qqRunning: pids.length > 0,
       qqPids: pids,
       onebotReady,
+      onebotHttpReady,
+      onebotConfigCount: onebotConfigFiles.length,
+      onebotConfigNames: onebotConfigFiles.map((file) => path.basename(file)),
       ...this.installationStatus(),
       ...this.readWebui(),
       paths: p
+    };
+  }
+
+  /**
+   * 只读本机体检。不会启动/停止 QQ，不会改写 QQ.app，也不会读取或返回令牌。
+   * required=true 的项目全部通过，才表示协议层已经具备联调条件。
+   */
+  async diagnose() {
+    const status = await this.status();
+    const external = status.type === 'external-onebot';
+    const checks = [];
+    const add = (id, ok, label, detail, action = '', required = true) => {
+      checks.push({ id, ok: !!ok, label, detail: String(detail || ''), action: String(action || ''), required });
+    };
+
+    add(
+      'platform',
+      process.platform === 'darwin' || external,
+      '运行平台',
+      external ? `${process.platform}（外部 OneBot 模式）` : `${process.platform} / ${process.arch}`,
+      '内置 NapCat 启动只支持 macOS；其他平台请切换为外部 OneBot。'
+    );
+
+    if (!external) {
+      add('architecture', process.arch === 'arm64', '处理器架构', process.arch, '当前打包配置优先支持 Apple Silicon（arm64）。', false);
+      add('qq-app', status.qqInstalled, 'QQ.app', status.paths.qqAppPath, '请先安装 macOS QQ，或在设置中填写实际 QQ.app 路径。');
+      add('qq-executable', status.qqExecutableReady, 'QQ 可执行文件', status.paths.qqExecutable, 'QQ.app 不完整或可执行权限异常，请重新安装 QQ。');
+      add('napcat-package', status.napcatInstalled, 'NapCat 程序', status.napcatInstalled ? `${status.napcatVersion || '版本未知'} · ${status.napcatPackageFile}` : status.paths.napcatRoot, '请使用官方 NapCat Mac Installer 安装 NapCat。');
+      add('napcat-loader', status.loaderInstalled, 'NapCat 加载器', status.paths.napcatLoaderFile, '请在官方安装器中重新安装或修复 NapCat。');
+      add('qq-entry', status.entryPatched, 'QQ 程序入口', status.entryMain || '未读取到 main 字段', '请在官方安装器中执行“切换程序入口 NapCat”。');
+      add('qq-backup', status.entryBackupAvailable, 'QQ 入口备份', status.paths.qqPackageBackupFile, '建议使用官方安装器重新执行入口切换，确保可恢复原版 QQ。', false);
+      add('qq-process', status.qqRunning, 'QQ / NapCat 进程', status.qqRunning ? `运行中（${status.qqPids.join(', ')}）` : '未运行', '完成安装和入口切换后，点击“启动 NapCat”。');
+      add('onebot-config', status.onebotConfigCount > 0, 'OneBot 配置', status.onebotConfigCount > 0 ? status.onebotConfigNames.join(', ') : '尚未生成账号配置', '请完成 QQ 登录，并在 NapCat WebUI 中启用 OneBot v11 WebSocket 与 HTTP 服务。');
+      add('webui-config', !!status.webuiConfigFile, 'NapCat WebUI 配置', status.webuiConfigFile || '尚未生成', '启动 NapCat 并完成首次登录后会自动生成。', false);
+    }
+
+    add('onebot-ws', status.onebotReady, 'OneBot WebSocket', String(this.config().wsUrl || 'ws://127.0.0.1:3001'), '请在 NapCat WebUI 中启用 WebSocket 服务，并核对地址、端口和令牌。');
+    add('onebot-http', status.onebotHttpReady, 'OneBot HTTP', String(this.config().httpUrl || 'http://127.0.0.1:3000'), '请在 NapCat WebUI 中启用 HTTP 服务，并核对地址、端口和令牌。');
+
+    const blocking = checks.filter((item) => item.required && !item.ok);
+    return {
+      ready: blocking.length === 0,
+      mode: status.type,
+      checkedAt: Date.now(),
+      checks,
+      nextAction: blocking[0]?.action || (blocking.length === 0 ? '协议端端口已经就绪，请重新连接 OneBot 并确认登录账号。' : '')
     };
   }
 
@@ -298,6 +365,9 @@ export class ConnectorManager {
     }
     if (!status.napcatInstalled) {
       return { ok: false, code: 'NAPCAT_NOT_INSTALLED', error: '未检测到 NapCat。请先使用官方 Mac 安装器安装并切换 QQ 入口。', installerUrl: NAPCAT_INSTALLER_URL };
+    }
+    if (!status.loaderInstalled) {
+      return { ok: false, code: 'NAPCAT_LOADER_MISSING', error: `未找到 NapCat 加载器：${status.paths.napcatLoaderFile}。请使用官方 Mac 安装器重新安装或修复。`, installerUrl: NAPCAT_INSTALLER_URL };
     }
     if (!status.entryPatched) {
       return { ok: false, code: 'NAPCAT_NOT_PATCHED', error: 'NapCat 已存在，但 QQ 入口尚未切换到 NapCat。请在官方 Mac 安装器中完成“修改 QQ”。', installerUrl: NAPCAT_INSTALLER_URL };
@@ -379,4 +449,3 @@ export class ConnectorManager {
     return { ok: true, installerUrl: NAPCAT_INSTALLER_URL };
   }
 }
-

@@ -609,6 +609,14 @@ export function createApp({ log = console.log } = {}) {
         return json(res, 200, { logs: connector.recentLogs(200) });
       }
 
+      if (pathname === '/api/connector/diagnose' && method === 'GET') {
+        try {
+          return json(res, 200, await connector.diagnose());
+        } catch (error) {
+          return json(res, 500, { ok: false, error: String(error?.message ?? error) });
+        }
+      }
+
       if ((pathname === '/api/connector/stop' || pathname === '/api/snowluma/stop') && method === 'POST') {
         try {
           const body = await readBody(req).catch(() => ({}));
@@ -1011,7 +1019,7 @@ export function createApp({ log = console.log } = {}) {
         initPriceFeed(next.api?.priceRemoteUrl || '');   // 远程价格表 URL 可能改了（内部幂等）
         if (patch.connector) await connector.reconnect(onebot);
         emit('status', { configUpdated: true });
-        return json(res, 200, { ok: true, config: next });
+        return json(res, 200, { ok: true, config: sanitizeConfig(next) });
       }
 
       if (pathname === '/api/version' && method === 'GET') {
@@ -1021,6 +1029,9 @@ export function createApp({ log = console.log } = {}) {
 
       if (pathname === '/api/update-check' && method === 'GET') {
         const current = localVersion();
+        if (cfgNow.externalServices?.updateCheckEnabled !== true) {
+          return json(res, 200, { ok: false, disabled: true, current, error: '本机移植版默认关闭上游在线更新检查。' });
+        }
         try {
           const r = await fetch(UPDATE_INFO_URL, { signal: AbortSignal.timeout(8000), cache: 'no-store' });
           if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -1410,8 +1421,8 @@ export function createApp({ log = console.log } = {}) {
     }
     if (port == null) throw lastError ?? new Error('无法监听端口');
 
-    // 匿名用量遥测：启动 90 秒后发第一次，之后每 6 小时一次；失败静默不影响使用
-    startTelemetryLoop(log);
+    // 本机移植版默认不向上游作者服务器发送匿名统计；只有用户显式开启才启动。
+    if (getConfig().externalServices?.telemetryEnabled === true) startTelemetryLoop(log);
 
     // 如已配置则启动 macOS NapCat；默认关闭，避免在用户未安装/未切换入口时
     // 擅自重启当前 QQ。启动失败只记录，不影响控制台打开。
