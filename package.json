@@ -29,21 +29,6 @@
       "!progress.md",
       "!*.log"
     ],
-    "win": {
-      "target": [
-        "nsis"
-      ],
-      "icon": "assets/icon.ico"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "allowElevation": false,
-      "deleteAppDataOnUninstall": false,
-      "shortcutName": "QQ Agent",
-      "include": "build/installer.nsh"
-    },
     "mac": {
       "target": [
         {

@@ -5,13 +5,6 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Windows 上部分显卡驱动会导致渲染进程黑屏；macOS 保留硬件加速。
-if (process.platform === 'win32') app.disableHardwareAcceleration();
-
-// AppUserModelID：让 Windows 把窗口归到「QQ Agent」身份下（任务栏分组/图标/通知），
-// 否则 dev 模式下会被当成裸 electron.exe，钉任务栏变成 electron 图标
-if (process.platform === 'win32') app.setAppUserModelId('local.qqagent.macos');
-
 // ── 数据目录 ──
 // 开发模式把数据放在项目 runtime/data，便于本机移植开发全部留在工程目录；
 // 打包应用使用 macOS 标准 Application Support，避免向签名后的 .app 内写文件。
@@ -33,7 +26,7 @@ function resolveDataDir() {
 }
 process.env.QQ_AGENT_DATA_DIR = resolveDataDir();
 
-// 单实例锁：重复启动（双击 .bat）不产生第二个实例，而是唤出已有窗口。
+// 单实例锁：重复启动不产生第二个实例，而是唤出已有窗口。
 // 没有锁的话第二个实例会双份连 OneBot，群消息会被双重回复。
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {

@@ -41,8 +41,6 @@ export const DEFAULT_CONFIG = {
   },
   // 多提供商模型目录（设置页手动维护）
   providers: [],
-  // 多提供商模型目录（设置页手动维护）
-  providers: [],
   dshProviderKeys: {},   // providerId -> 真实 API Key（providers[] 里不再存明文 Key）
   providersSourceYaml: '',
   providersImported: true,
