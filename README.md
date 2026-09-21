@@ -1,3 +1,7 @@
+<p align="right">
+  <strong>简体中文</strong> | <a href="README_EN.md">English</a>
+</p>
+
 # QQ Agent Mac
 
 ![平台](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-lightgrey)
