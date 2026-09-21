@@ -240,6 +240,11 @@ npm run dist:mac    # 构建未签名的 arm64 DMG 和 ZIP
 
 本机已经通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer) 完成安装和入口切换。其他机器首次部署时仍需执行该步骤，并在 NapCat WebUI 中启用 OneBot v11 WebSocket 和 HTTP 服务。若 macOS 阻止 QQ Agent 读取 QQ 沙盒目录，可在设置中手动填写 OneBot 令牌；这不影响本机协议连接。
 
+### `.app` 打包版说明
+
+1. `.app` 只包含 QQ Agent，QQ 和 NapCat 仍需独立安装。
+2. 当前是未签名本机版，首次打开可能需要右键选择“打开”。
+
 ## 源码来源与归属
 
 本仓库的来源关系如下：
