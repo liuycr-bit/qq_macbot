@@ -205,7 +205,12 @@ async function api(path, options = {}) {
     ...options
   });
   const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(data.error || `HTTP ${res.status}`);
+    error.data = data;
+    error.status = res.status;
+    throw error;
+  }
   return data;
 }
 
@@ -254,13 +259,13 @@ async function pollUntilReady() {
   const startedAt = Date.now();
   try {
     const status = await api('/api/status');
-    if (!status.onebot?.connected) setLoadingStatus('SnowLuma 已就绪，正在连接 OneBot…');
+    if (!status.onebot?.connected) setLoadingStatus('控制台已就绪，正在连接 NapCat OneBot…');
     else setLoadingStatus(`OneBot 已连接${status.onebot.self ? `（${status.onebot.self.nickname}）` : ''}，即将进入控制台…`);
     // 服务已可达，无需等到 OneBot 完全连上即可进入控制台（体检卡会继续提示）
     return true;
   } catch (e) {
     if (Date.now() - startedAt > 45000) {
-      setLoadingStatus('启动超时。请确认项目内 snowluma 文件夹完整，或到设置页手动启动 SnowLuma。');
+      setLoadingStatus('启动超时。请到“QQ 连接”页检查 NapCat 与 OneBot 状态。');
       return false;
     }
     return false;
@@ -299,7 +304,7 @@ function assessReadiness(cfg, status) {
   const allowOk = (cfg.allow?.groups?.length || cfg.allow?.private?.length || cfg.allowAllWhenEmpty);
   checks.push({ ok: !!allowOk, label: allowOk ? `白名单：${(cfg.allow.groups || []).length} 个群 / ${(cfg.allow.private || []).length} 个好友` : '还没有配置白名单（必填）', fix: allowOk ? null : 'settings-allow' });
   const obOk = status?.onebot?.connected;
-  checks.push({ ok: !!obOk, label: obOk ? `OneBot 已连接${status.onebot.self ? `（${status.onebot.self.nickname}）` : ''}` : 'OneBot（SnowLuma）未连接 —— 请到 SnowLuma 页签启动', fix: obOk ? null : 'snowluma-tab' });
+  checks.push({ ok: !!obOk, label: obOk ? `OneBot 已连接${status.onebot.self ? `（${status.onebot.self.nickname}）` : ''}` : 'OneBot（NapCat）未连接 —— 请到“QQ 连接”页启动或重新连接', fix: obOk ? null : 'snowluma-tab' });
   return { ready: urlOk && modelOk && allowOk && obOk, checks };
 }
 
@@ -314,7 +319,7 @@ function renderBanner() {
     html = '⏸ 机器人已暂停，不会处理任何消息。';
   } else if (s && !s.onebot.connected && !s.onebot.everConnected) {
     show = true;
-    html = '🔌 OneBot（SnowLuma）还没连上：请确认 SnowLuma 已启动，且设置里的 WS/HTTP 地址正确。';
+    html = '🔌 OneBot（NapCat）还没连上：请在“QQ 连接”页确认 NapCat 已启动，且 WS/HTTP 地址正确。';
   }
   banner.classList.toggle('hidden', !show);
   if (show) {
@@ -561,8 +566,8 @@ function connectSSE() {
     if (state.tab === 'snowluma') loadSnowlumaPage({ quiet: true });
   });
   es.addEventListener('status', () => refreshStatus());
-  es.addEventListener('snowluma-status', () => { refreshStatus(); if (state.tab === 'snowluma') loadSnowlumaPage({ quiet: true }); });
-  es.addEventListener('snowluma-log', (ev) => {
+  es.addEventListener('connector-status', () => { refreshStatus(); if (state.tab === 'snowluma') loadSnowlumaPage({ quiet: true }); });
+  es.addEventListener('connector-log', (ev) => {
     const d = JSON.parse(ev.data);
     if (!appReady && d?.text) {
       setLoadingStatus(d.text);
@@ -951,9 +956,9 @@ function renderSessionDetail(s) {
   // 功能完全覆盖，2s 递归属于纯重复请求。
 }
 
-// ── SnowLuma 独立页签 ──
+// ── QQ / NapCat / OneBot 连接页 ──
 /**
- * 只刷新 SnowLuma 的日志区（不重建整个页面）。
+ * 只刷新连接日志区（不重建整个页面）。
  * SSE 每来一条新日志就调一次 —— 如果这里重建整页，
  * 用户正在看的日志会被反复重绘，滚动位置也保不住。
  */
@@ -963,7 +968,7 @@ async function refreshSnowlumaLogs() {
   const pre = box.querySelector('.snowluma-logs-view');
   if (!pre) return;                       // 页面还没渲染过，等下次整页刷新
   try {
-    const logs = await api('/api/snowluma/logs');
+    const logs = await api('/api/connector/logs');
     const logText = (logs.logs || []).map((l) => {
       const t = new Date(l.at).toLocaleTimeString('zh-CN', { hour12: false });
       return `[${t}]${l.stream === 'stderr' ? ' ⚠' : ''} ${l.text}`;
@@ -981,17 +986,22 @@ async function loadSnowlumaPage({ quiet = false } = {}) {
   try {
     const [status, logs] = await Promise.all([
       api('/api/status'),
-      api('/api/snowluma/logs')
+      api('/api/connector/logs')
     ]);
     const s = status;
     const box = $('#snowluma-page');
     if (!box) return;
-    const running = !!(s.snowluma?.running);
+    const connector = s.connector || {};
+    const running = !!connector.qqRunning;
     const onebotConnected = !!s.onebot?.connected;
-    const dir = s.snowluma?.dir || '';
-    const embedded = !!s.snowluma?.embedded;
-    const pid = s.snowluma?.pid ?? null;
-    const webuiUrl = s.snowluma?.webuiUrl || '';
+    const installed = !!connector.napcatInstalled;
+    const patched = !!connector.entryPatched;
+    const pid = connector.pid ?? connector.qqPids?.[0] ?? null;
+    const webuiUrl = connector.webuiUrl || '';
+    const paths = connector.paths || {};
+    const loginText = onebotConnected
+      ? `已登录${s.onebot.self ? `：${s.onebot.self.nickname}（${s.onebot.self.userId}）` : ''}`
+      : (running ? 'QQ 已运行，等待 OneBot 登录信息' : '未登录');
     const logText = (logs.logs || []).map((l) => {
       const t = new Date(l.at).toLocaleTimeString('zh-CN', { hour12: false });
       return `[${t}]${l.stream === 'stderr' ? ' ⚠' : ''} ${l.text}`;
@@ -1006,36 +1016,46 @@ async function loadSnowlumaPage({ quiet = false } = {}) {
 
     box.innerHTML = `
       <div class="snowluma-page-card">
-        <h2>SnowLuma（OneBot 网关）</h2>
+        <h2>QQ 连接（macOS NapCat）</h2>
+        <div class="snowluma-state-row">
+          <span class="dot ${installed && patched ? 'dot-on' : 'dot-off'}"></span>
+          <span>NapCat：<strong>${installed ? (patched ? '已安装并已切换入口' : '已安装，尚未切换 QQ 入口') : '未安装'}</strong></span>
+          ${connector.napcatVersion ? `<span class="muted">v${esc(connector.napcatVersion)}</span>` : ''}
+        </div>
         <div class="snowluma-state-row">
           <span class="dot ${running ? 'dot-on' : 'dot-off'}"></span>
-          <span>SnowLuma：<strong>${running ? '运行中' : '未运行'}</strong></span>
+          <span>QQ：<strong>${running ? '运行中' : '未运行'}</strong></span>
           ${pid ? `<span class="muted">pid ${pid}</span>` : ''}
-          <span class="muted">${embedded ? '内置模式（随 QQ Agent 退出）' : (running ? '独立模式' : '')}</span>
+          <span class="muted">${connector.managed ? '由 QQ Agent 启动' : (running ? '独立运行' : '')}</span>
         </div>
         <div class="snowluma-state-row">
           <span class="dot ${onebotConnected ? 'dot-on' : 'dot-off'}"></span>
-          <span>OneBot：<strong>${onebotConnected ? `已连接${s.onebot.self ? `（${s.onebot.self.nickname}）` : ''}` : '未连接'}</strong></span>
+          <span>登录状态：<strong>${esc(loginText)}</strong></span>
           <span class="muted">WS ${s.onebot?.error ? `：${s.onebot.error}` : ''}</span>
         </div>
         <div class="snowluma-state-row muted">
-          <span>目录：${esc(dir || '（未找到项目内 snowluma/ 文件夹）')}</span>
+          <span>NapCat：${esc(paths.napcatRoot || '未识别')}</span>
+        </div>
+        <div class="snowluma-state-row muted">
+          <span>QQ：${esc(paths.qqAppPath || '未识别')}</span>
         </div>
         <div class="snowluma-state-row">
-          <span>WebUI：</span>
+          <span>协议端控制台：</span>
           ${webuiUrl
-            ? `<button class="btn btn-small" id="sl-open-webui-btn" title="在浏览器中打开 SnowLuma 控制台">${esc(webuiUrl)}</button>`
-            : '<span class="muted">等待 SnowLuma 启动后自动识别…</span>'}
+            ? `<button class="btn btn-small" id="sl-open-webui-btn" title="在浏览器中打开 NapCat WebUI">打开 NapCat WebUI</button>`
+            : '<span class="muted">启动 NapCat 并完成 QQ 登录后自动识别</span>'}
         </div>
         <div class="snowluma-actions">
-          <button class="btn btn-primary" id="sl-start-btn" ${running ? 'disabled' : ''}>${running ? '已运行' : '启动 SnowLuma'}</button>
-          <button class="btn btn-danger" id="sl-stop-btn" ${running ? '' : 'disabled'}>关闭 SnowLuma</button>
+          <button class="btn btn-primary" id="sl-start-btn" ${onebotConnected ? 'disabled' : ''}>${onebotConnected ? '已连接' : '启动 NapCat'}</button>
+          <button class="btn btn-danger" id="sl-stop-btn" ${running ? '' : 'disabled'}>关闭 QQ / NapCat</button>
+          <button class="btn btn-small" id="sl-reconnect-btn">重新连接 OneBot</button>
           <button class="btn btn-small" id="sl-refresh-btn">刷新状态</button>
-          <button class="btn btn-small" id="sl-open-folder-btn">打开文件夹</button>
+          <button class="btn btn-small" id="sl-open-folder-btn">打开 NapCat 文件夹</button>
+          ${installed && patched ? '' : '<button class="btn btn-small" id="sl-installer-btn">打开官方 Mac 安装器</button>'}
           <span id="sl-hint" class="muted" style="font-size:12px"></span>
         </div>
         <div>
-          <div class="hint" style="margin-bottom:6px">运行日志（仅保留最近 500 行）</div>
+          <div class="hint" style="margin-bottom:6px">连接管理日志（仅保留最近 500 行；NapCat 完整日志请在 WebUI 查看）</div>
           <pre class="snowluma-logs-view">${esc(logText)}</pre>
         </div>
       </div>`;
@@ -1049,8 +1069,19 @@ async function loadSnowlumaPage({ quiet = false } = {}) {
       btn.disabled = true; btn.textContent = '启动中…';
       $('#sl-hint').textContent = '';
       try {
-        const r = await api('/api/snowluma/launch', { method: 'POST', body: '{}' });
-        $('#sl-hint').textContent = r.alreadyRunning ? 'SnowLuma 已经在运行 ✓' : (r.ok ? '已启动，日志见下方。首次 QQ 登录需要几秒到几十秒。' : `启动失败：${r.error}`);
+        let body = {};
+        let r;
+        try {
+          r = await api('/api/connector/launch', { method: 'POST', body: JSON.stringify(body) });
+        } catch (e) {
+          if (e.data?.code === 'QQ_RESTART_REQUIRED' && confirm('QQ 正在运行。是否退出当前 QQ，并以 NapCat 模式重新启动？')) {
+            body = { restart: true };
+            r = await api('/api/connector/launch', { method: 'POST', body: JSON.stringify(body) });
+          } else {
+            throw e;
+          }
+        }
+        $('#sl-hint').textContent = r.alreadyRunning ? 'NapCat OneBot 已经就绪 ✓' : (r.ok ? '已启动；如未登录，请在 QQ 窗口完成登录。' : `启动失败：${r.error}`);
       } catch (e) {
         $('#sl-hint').textContent = `启动失败：${e.message}`;
       }
@@ -1061,22 +1092,41 @@ async function loadSnowlumaPage({ quiet = false } = {}) {
       btn.disabled = true; btn.textContent = '关闭中…';
       $('#sl-hint').textContent = '';
       try {
-        await api('/api/snowluma/stop', { method: 'POST', body: '{}' });
-        $('#sl-hint').textContent = '已请求关闭 SnowLuma。';
+        try {
+          await api('/api/connector/stop', { method: 'POST', body: '{}' });
+        } catch (e) {
+          if (e.data?.code === 'EXTERNAL_PROCESS' && confirm('当前 QQ 不是由 QQ Agent 启动。是否仍要关闭正在运行的 QQ 与 NapCat？')) {
+            await api('/api/connector/stop', { method: 'POST', body: JSON.stringify({ force: true }) });
+          } else {
+            throw e;
+          }
+        }
+        $('#sl-hint').textContent = '已请求关闭 QQ / NapCat。';
       } catch (e) {
         $('#sl-hint').textContent = `关闭失败：${e.message}`;
       }
       setTimeout(() => loadSnowlumaPage({ quiet: true }), 1500);
     });
     $('#sl-refresh-btn').addEventListener('click', () => loadSnowlumaPage());
+    $('#sl-reconnect-btn').addEventListener('click', async () => {
+      try {
+        await api('/api/connector/reconnect', { method: 'POST', body: '{}' });
+        $('#sl-hint').textContent = '已重新发起 OneBot 连接。';
+      } catch (e) { $('#sl-hint').textContent = `重连失败：${e.message}`; }
+    });
     $('#sl-open-folder-btn').addEventListener('click', async () => {
-      try { await api('/api/snowluma/open-folder', { method: 'POST', body: '{}' }); }
+      try { await api('/api/connector/open-folder', { method: 'POST', body: '{}' }); }
       catch (e) { $('#sl-hint').textContent = `失败：${e.message}`; }
+    });
+    const installerBtn = $('#sl-installer-btn');
+    if (installerBtn) installerBtn.addEventListener('click', async () => {
+      try { await api('/api/connector/open-installer', { method: 'POST', body: '{}' }); }
+      catch (e) { $('#sl-hint').textContent = `打开失败：${e.message}`; }
     });
     const webuiBtn = $('#sl-open-webui-btn');
     if (webuiBtn) webuiBtn.addEventListener('click', async () => {
       try {
-        const r = await api('/api/snowluma/open-webui', { method: 'POST', body: '{}' });
+        const r = await api('/api/connector/open-webui', { method: 'POST', body: '{}' });
         if (!r.ok) $('#sl-hint').textContent = r.error;
       } catch (e) {
         $('#sl-hint').textContent = `打开失败：${e.message}`;
@@ -2500,7 +2550,7 @@ function renderHealthCard() {
   const rows = checks.map((c) => {
     let extra = '';
     if (!c.ok && c.fix === 'snowluma-tab') {
-      extra = ' <button class="btn btn-small" id="hc-goto-snowluma">前往 SnowLuma 页签</button>';
+      extra = ' <button class="btn btn-small" id="hc-goto-snowluma">前往 QQ 连接页</button>';
     }
     return `
     <div class="h-item ${c.ok ? 'ok' : 'bad'}">
@@ -2655,7 +2705,7 @@ function renderSettingsSidebar() {
     ['allow', '聊天白名单'],
     ['chat', '聊天设置'],
     ['desktop', '桌面端'],
-    ['onebot', 'OneBot（SnowLuma）']
+    ['onebot', 'QQ / OneBot（NapCat）']
   ];
   sidebar.innerHTML = `
     <div class="settings-runstate">
@@ -3219,24 +3269,36 @@ function renderDesktopSection(c) {
 }
 
 function renderOnebotSection(c) {
+  const connector = c.connector || {};
   return `
-    <h3 id="settings-onebot">OneBot（SnowLuma）</h3>
-    <div class="hint" style="margin-bottom:10px">SnowLuma 的启动、关闭与日志已移动到顶部「SnowLuma」页签。此处只保留连接配置。</div>
-    <div class="field"><label>SnowLuma 程序目录（留空 = 自动使用项目内 snowluma/ 文件夹）</label>
-      <div style="display:flex;gap:8px">
-        <input type="text" id="cfg-snowlumadir" value="${esc(c.snowluma.dir || '')}" style="flex:1" />
-        <button class="btn btn-small" id="open-snowluma-btn">打开文件夹</button>
-      </div>
-      <div class="hint" id="snowluma-hint"></div></div>
-    <div class="checkbox-row"><input type="checkbox" id="cfg-snowlumalaunch" ${c.snowluma.autoLaunch ? 'checked' : ''} />
-      <label for="cfg-snowlumalaunch">QQ Agent 启动时自动拉起 SnowLuma（未运行时）</label></div>
+    <h3 id="settings-onebot">QQ / OneBot（macOS NapCat）</h3>
+    <div class="hint" style="margin-bottom:10px">启动、停止、登录状态和协议端控制台位于顶部“QQ 连接”页。QQ Agent 不修改 QQ.app，也不把 NapCat 打进安装包。</div>
     <div class="field-row">
-      <div class="field"><label>WebSocket 地址（收消息）</label><input type="text" id="cfg-wsurl" value="${esc(c.snowluma.wsUrl)}" /></div>
-      <div class="field"><label>HTTP 地址（发消息）</label><input type="text" id="cfg-httpurl" value="${esc(c.snowluma.httpUrl)}" /></div>
-      <div class="field"><label>WebSocket 令牌</label><input type="password" id="cfg-obtoken" value="${esc(c.snowluma.accessToken || '')}" /></div>
-      <div class="field"><label>HTTP 令牌（与 WS 不同时填；SnowLuma 默认分开）</label><input type="password" id="cfg-obhttptoken" value="${esc(c.snowluma.httpAccessToken || '')}" /></div>
+      <div class="field"><label>连接方式</label><select id="cfg-connectortype">
+        <option value="napcat-macos" ${connector.type !== 'external-onebot' ? 'selected' : ''}>macOS NapCat（可由界面启动）</option>
+        <option value="external-onebot" ${connector.type === 'external-onebot' ? 'selected' : ''}>外部 OneBot（只连接）</option>
+      </select></div>
+      <div class="field"><label>QQ.app 路径</label><input type="text" id="cfg-qqapppath" value="${esc(connector.qqAppPath || '/Applications/QQ.app')}" /></div>
     </div>
-    <div class="hint">改完 OneBot 地址需要重启应用生效；模型/人设/白名单即时生效。</div>`;
+    <div class="field"><label>NapCat 安装目录</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" id="cfg-napcatroot" value="${esc(connector.napcatRoot || '')}" style="flex:1" />
+        <button class="btn btn-small" id="open-snowluma-btn">打开 NapCat 文件夹</button>
+      </div>
+      <div class="hint" id="snowluma-hint">留空时按官方 Mac 安装器目录自动识别。</div></div>
+    <div class="field-row">
+      <div class="field"><label>NapCat 数据目录</label><input type="text" id="cfg-napcatdatadir" value="${esc(connector.napcatDataDir || '')}" /></div>
+      <div class="field"><label>NapCat 配置目录</label><input type="text" id="cfg-napcatconfigdir" value="${esc(connector.napcatConfigDir || '')}" /></div>
+    </div>
+    <div class="checkbox-row"><input type="checkbox" id="cfg-snowlumalaunch" ${connector.autoLaunch ? 'checked' : ''} />
+      <label for="cfg-snowlumalaunch">QQ Agent 启动时尝试拉起 NapCat（不会强制退出已运行的 QQ）</label></div>
+    <div class="field-row">
+      <div class="field"><label>WebSocket 地址（收消息）</label><input type="text" id="cfg-wsurl" value="${esc(connector.wsUrl || 'ws://127.0.0.1:3001')}" /></div>
+      <div class="field"><label>HTTP 地址（发消息）</label><input type="text" id="cfg-httpurl" value="${esc(connector.httpUrl || 'http://127.0.0.1:3000')}" /></div>
+      <div class="field"><label>WebSocket 令牌</label><input type="password" id="cfg-obtoken" value="${connector.hasAccessToken ? '******' : ''}" autocomplete="new-password" /></div>
+      <div class="field"><label>HTTP 令牌（留空则沿用 WS）</label><input type="password" id="cfg-obhttptoken" value="${connector.hasHttpAccessToken ? '******' : ''}" autocomplete="new-password" /></div>
+    </div>
+    <div class="hint">保存后会立即重新连接 OneBot，不需要重启 QQ Agent。</div>`;
 }
 
 function bindSettingsEvents(c) {
@@ -3847,7 +3909,7 @@ function bindSettingsEvents(c) {
   const openSnowlumaBtn = $('#open-snowluma-btn');
   if (openSnowlumaBtn) openSnowlumaBtn.addEventListener('click', async () => {
     await saveConfig({ quiet: true });
-    try { await api('/api/snowluma/open-folder', { method: 'POST', body: '{}' }); }
+    try { await api('/api/connector/open-folder', { method: 'POST', body: '{}' }); }
     catch (e) { $('#snowluma-hint').textContent = `失败：${e.message}`; }
   });
 }
@@ -4384,7 +4446,7 @@ async function openWhitelistPicker(kind) {
     return;
   }
   if (!list?.length) {
-    $('#pick-result').textContent = isGroups ? '没拉到群列表（检查 SnowLuma）' : '没拉到好友列表';
+    $('#pick-result').textContent = isGroups ? '没拉到群列表（检查 NapCat OneBot）' : '没拉到好友列表';
     return;
   }
   const inputEl = $(isGroups ? '#cfg-allowgroups' : '#cfg-allowprivate');
@@ -4653,14 +4715,21 @@ async function saveConfig({ quiet = false } = {}) {
   }
 
   if (sec === 'onebot') {
-    patch.snowluma = {
-      dir: val('#cfg-snowlumadir', c.snowluma?.dir || '').trim(),
-      autoLaunch: chk('#cfg-snowlumalaunch', !!c.snowluma?.autoLaunch),
-      wsUrl: val('#cfg-wsurl', c.snowluma?.wsUrl || '').trim(),
-      httpUrl: val('#cfg-httpurl', c.snowluma?.httpUrl || '').trim(),
-      accessToken: val('#cfg-obtoken', c.snowluma?.accessToken || '').trim(),
-      httpAccessToken: val('#cfg-obhttptoken', c.snowluma?.httpAccessToken || '').trim()
+    const cur = c.connector || {};
+    patch.connector = {
+      type: val('#cfg-connectortype', cur.type || 'napcat-macos'),
+      autoLaunch: chk('#cfg-snowlumalaunch', !!cur.autoLaunch),
+      qqAppPath: val('#cfg-qqapppath', cur.qqAppPath || '/Applications/QQ.app').trim(),
+      napcatRoot: val('#cfg-napcatroot', cur.napcatRoot || '').trim(),
+      napcatDataDir: val('#cfg-napcatdatadir', cur.napcatDataDir || '').trim(),
+      napcatConfigDir: val('#cfg-napcatconfigdir', cur.napcatConfigDir || '').trim(),
+      wsUrl: val('#cfg-wsurl', cur.wsUrl || '').trim(),
+      httpUrl: val('#cfg-httpurl', cur.httpUrl || '').trim()
     };
+    const wsToken = val('#cfg-obtoken', '').trim();
+    const httpToken = val('#cfg-obhttptoken', '').trim();
+    if (wsToken && wsToken !== '******') patch.connector.accessToken = wsToken;
+    if (httpToken && httpToken !== '******') patch.connector.httpAccessToken = httpToken;
   }
 
   const data = await api('/api/config', { method: 'POST', body: JSON.stringify(patch) });
@@ -4801,7 +4870,7 @@ function openBlocklistModal() {
       const n = (pending[activeGid] || []).length;
       statusEl.textContent = n ? `当前群已屏蔽 ${n} 人` : '';
     } catch (e) {
-      right.innerHTML = `<div class="empty-hint" style="padding:18px">拉取失败：${esc(e.message)}（SnowLuma 在线才能拿到群成员列表）</div>`;
+      right.innerHTML = `<div class="empty-hint" style="padding:18px">拉取失败：${esc(e.message)}（NapCat OneBot 在线才能拿到群成员列表）</div>`;
     }
   }
 

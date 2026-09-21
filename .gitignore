@@ -42,6 +42,8 @@ dist/
 release/
 *.exe
 *.msi
+*.dmg
+*.zip
 
 # 注意：build/installer.nsh 是安装器源码（旧版迁移向导），要进版本库
 

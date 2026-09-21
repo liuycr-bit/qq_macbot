@@ -104,14 +104,20 @@ export const DEFAULT_CONFIG = {
   security: {
     allowPrivateImageHosts: false           // true 时图片下载允许内网地址（仅本地测试/自建图床）
   },
-  // SnowLuma / OneBot v11
-  snowluma: {
-    dir: '',                   // SnowLuma 程序目录；留空 = 自动探测项目内 ./snowluma
-    autoLaunch: false,         // 应用启动时自动拉起 SnowLuma（未运行时）
+  // QQ 协议端 / OneBot v11。
+  // macOS 默认连接由官方 NapCat Mac Installer 安装的独立 NapCat，QQ Agent
+  // 只负责启动、停止、状态展示和 OneBot 连接，不修改 QQ.app，也不打包协议端。
+  connector: {
+    type: 'napcat-macos',      // napcat-macos | external-onebot
+    autoLaunch: false,
+    qqAppPath: '/Applications/QQ.app',
+    napcatRoot: '~/Library/Containers/com.tencent.qq/Data/Documents/napcat',
+    napcatDataDir: '~/Library/Containers/com.tencent.qq/Data/Library/Application Support/QQ/NapCat',
+    napcatConfigDir: '~/Library/Containers/com.tencent.qq/Data/.config/QQ/NapCat',
     wsUrl: 'ws://127.0.0.1:3001',
     httpUrl: 'http://127.0.0.1:3000',
-    accessToken: '',           // WebSocket 令牌
-    httpAccessToken: ''        // HTTP API 令牌（SnowLuma 可与 WS 不同；留空沿用 accessToken）
+    accessToken: '',
+    httpAccessToken: ''
   },
   // 人设与行为
   persona: {
@@ -236,6 +242,18 @@ export function loadConfig() {
     let text = fs.readFileSync(CONFIG_FILE, 'utf8');
     if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
     const parsed = JSON.parse(text);
+    // 从 Windows 版旧配置无损迁移：保留 OneBot 地址和令牌，但不再读取或启动
+    // SnowLuma。迁移只发生在内存中；用户下次保存设置时会写入 connector。
+    if (!parsed.connector && parsed.snowluma) {
+      parsed.connector = {
+        type: 'external-onebot',
+        autoLaunch: false,
+        wsUrl: parsed.snowluma.wsUrl,
+        httpUrl: parsed.snowluma.httpUrl,
+        accessToken: parsed.snowluma.accessToken,
+        httpAccessToken: parsed.snowluma.httpAccessToken
+      };
+    }
     return deepMerge(DEFAULT_CONFIG, parsed);
   } catch {
     return structuredClone(DEFAULT_CONFIG);

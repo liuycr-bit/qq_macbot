@@ -5,43 +5,36 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
-// Windows 上部分显卡驱动会导致渲染进程黑屏；禁用硬件加速是最稳妥的修复
-app.disableHardwareAcceleration();
+// Windows 上部分显卡驱动会导致渲染进程黑屏；macOS 保留硬件加速。
+if (process.platform === 'win32') app.disableHardwareAcceleration();
 
 // AppUserModelID：让 Windows 把窗口归到「QQ Agent」身份下（任务栏分组/图标/通知），
 // 否则 dev 模式下会被当成裸 electron.exe，钉任务栏变成 electron 图标
-app.setAppUserModelId('cn.kondius.qq-agent');
+if (process.platform === 'win32') app.setAppUserModelId('local.qqagent.macos');
 
-// ── 数据目录：始终固定在「应用根目录/data」──
-// Kondius 钦定：所有数据都存在安装目录下，不往 %APPDATA% 塞。
-//   压缩包用户：data 本来就在压缩包目录里，直接用（项目内 data/）；
-//   安装版用户：安装目录/exe 旁边的 data/。选压缩包目录当安装目录时
-//   天然接管里面的 data/（config、记忆、聊天记录、telemetry id 全保留），零迁移零 bug。
-// NSIS 覆盖安装只替换它自己装的文件，运行时生成的 data/ 不在清单里 → 升级不丢数据。
-// 兼容兜底：外置 %APPDATA% 时期（2026-09-06 短命版本）的数据自动搬回安装目录。
+// ── 数据目录 ──
+// 开发模式把数据放在项目 runtime/data，便于本机移植开发全部留在工程目录；
+// 打包应用使用 macOS 标准 Application Support，避免向签名后的 .app 内写文件。
 function resolveDataDir() {
   if (process.env.QQ_AGENT_DATA_DIR) return process.env.QQ_AGENT_DATA_DIR;
-  // 开发模式（.bat 直起 node_modules 里的 electron.exe + 项目目录）：项目内 data/
-  if (!app.isPackaged) return path.resolve(fileURLToPath(import.meta.url), '..', '..', 'data');
+  if (!app.isPackaged) return path.resolve(fileURLToPath(import.meta.url), '..', '..', 'runtime', 'data');
+  const target = path.join(app.getPath('userData'), 'data');
+  // 接管旧便携版可能留在可执行文件旁的数据。
   const portable = path.join(path.dirname(app.getPath('exe')), 'data');
   try {
-    if (!fs.existsSync(portable)) {
-      // 接管旧版遗留：%APPDATA%/qq-agent/data（外置期版本）→ 搬回安装目录
-      const legacy = path.join(app.getPath('userData'), 'data');
-      if (fs.existsSync(legacy) && fs.readdirSync(legacy).length > 0) {
-        fs.cpSync(legacy, portable, { recursive: true });
-        console.log('[data] 已从 %APPDATA% 迁回安装目录:', legacy, '→', portable);
-      }
+    if (!fs.existsSync(target) && fs.existsSync(portable) && fs.readdirSync(portable).length > 0) {
+      fs.cpSync(portable, target, { recursive: true });
+      console.log('[data] 已把旧便携数据迁移到 Application Support:', portable, '→', target);
     }
   } catch (error) {
-    console.error('[data] 旧数据迁移失败（不影响启动，将从空数据开始）:', error?.message ?? error);
+    console.error('[data] 旧数据迁移失败（不影响启动）:', error?.message ?? error);
   }
-  return portable;
+  return target;
 }
 process.env.QQ_AGENT_DATA_DIR = resolveDataDir();
 
 // 单实例锁：重复启动（双击 .bat）不产生第二个实例，而是唤出已有窗口。
-// 没有锁的话第二个实例会双份连 SnowLuma，群消息会被双重回复。
+// 没有锁的话第二个实例会双份连 OneBot，群消息会被双重回复。
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();
@@ -58,9 +51,9 @@ let tray = null;
 let quitting = false;
 
 function applyAutoStart() {
-  if (!core) return;
+  if (!core || !app.isPackaged) return;
   const cfg = core.getConfig();
-  app.setLoginItemSettings({ openAtLogin: !!cfg.server?.autoStart });
+  app.setLoginItemSettings({ openAtLogin: !!cfg.server?.autoStart, openAsHidden: true });
 }
 
 function showWindow() {
@@ -73,7 +66,7 @@ function showWindow() {
 }
 
 function createTray() {
-  const icon = nativeImage.createFromPath(ICON_PATH);
+  const icon = nativeImage.createFromPath(ICON_PATH).resize({ width: 18, height: 18 });
   tray = new Tray(icon);
   tray.setToolTip('QQ Agent');
   tray.setContextMenu(Menu.buildFromTemplate([

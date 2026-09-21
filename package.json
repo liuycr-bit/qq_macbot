@@ -1,25 +1,27 @@
 {
-  "name": "qq-agent",
-  "version": "0.3.0",
+  "name": "qq-agent-macos",
+  "version": "0.3.0-macos.1",
   "private": false,
-  "description": "QQ 群 AI 机器人（桌面版）：事件驱动的无状态 Agent，接 OpenAI 兼容 API，带会话式控制台。",
+  "description": "macOS QQ 群 AI 机器人：连接 NapCat OneBot v11，支持 OpenAI 兼容模型与图形控制台。",
   "type": "module",
   "main": "electron/main.js",
   "build": {
-    "appId": "cn.kondius.qq-agent",
-    "productName": "QQ Agent",
-    "artifactName": "qq-agent-v0.3-setup.exe",
-    "asar": false,
+    "appId": "local.qqagent.macos",
+    "productName": "QQ Agent Mac",
+    "artifactName": "QQ-Agent-Mac-${version}-${arch}.${ext}",
+    "asar": true,
+    "directories": {
+      "output": "release"
+    },
     "files": [
       "**/*",
       "!data/**",
-      "!snowluma/config/**",
-      "!snowluma/data/**",
-      "!snowluma/logs/**",
       "!test/**",
       "!docs/**",
       "!scripts/**",
       "!dist/**",
+      "!runtime/**",
+      "!release/**",
       "!**/*.map",
       "!package-lock.json.bak",
       "!task_plan.md",
@@ -41,6 +43,30 @@
       "deleteAppDataOnUninstall": false,
       "shortcutName": "QQ Agent",
       "include": "build/installer.nsh"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.social-networking",
+      "icon": "assets/icon.png",
+      "identity": null,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false
+    },
+    "dmg": {
+      "title": "QQ Agent Mac ${version}"
     }
   },
   "engines": {
@@ -49,6 +75,8 @@
   "scripts": {
     "start": "electron .",
     "server": "node src/server.js",
+    "pack:mac": "electron-builder --mac dir --arm64",
+    "dist:mac": "electron-builder --mac dmg zip --arm64",
     "test": "node test/selftest.mjs && node test/render-test.mjs && node test/scroll-test.mjs && node test/usage-e2e.mjs",
     "test:prompt": "node test/test-prompt.mjs",
     "test:render": "node test/render-test.mjs",

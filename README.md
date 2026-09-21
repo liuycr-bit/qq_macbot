@@ -1,10 +1,10 @@
 # QQ Agent（桌面端）
 
-![平台](https://img.shields.io/badge/platform-Windows%20%7C%20Electron-lightgrey)
+![平台](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-lightgrey)
 ![技术栈](https://img.shields.io/badge/stack-Node.js%20%7C%20原生前端-orange)
 ![测试](https://img.shields.io/badge/tests-149%20passed-brightgreen)
 
-一个跑在你自己电脑上的 QQ 群聊机器人：装完双击启动，扫码登录，填个模型 Key 就能用。
+一个跑在 Apple Silicon Mac 上的 QQ 群聊机器人：通过独立安装的 NapCat 接入 QQ，填入任意 OpenAI 兼容模型即可使用。
 事件驱动 + 无状态会话架构，每次处理的 token 成本恒定可控；所有操作都在图形控制台里完成，不用碰命令行。
 
 从 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 彻底改造而来的独立 QQ agent 应用。
@@ -29,7 +29,7 @@
 
 **整体组成**
 
-- **协议端**：通过 OneBot v11 正向 WebSocket 接 QQ（默认配 SnowLuma，任何兼容协议端均可换）
+- **协议端**：通过 OneBot v11 正向 WebSocket 接 QQ（macOS 默认配 NapCat，也可连接任意外部 OneBot）
 - **大脑**：任意 OpenAI 兼容 API——官方 / 中转站 / 本地网关均可，模型在设置里自选
 - **桌面壳**：Electron，托盘常驻、开机自启、关窗不退出、端口被占自动让位
 - **控制台**：零框架原生 HTML/CSS/JS，明暗双主题 + 跟随系统，带完整设计 token 体系
@@ -61,8 +61,10 @@
 **桌面端**
 - 托盘常驻 / 开机自启 / 关窗不退出；明暗主题；版本更新检查（发现新版本时直接提示）
 
-**OneBot**
-- 协议端地址可改，适配任何 OneBot v11 实现
+**QQ / OneBot**
+- 自动识别官方 NapCat Mac Installer 的安装目录、WebUI 与账号配置
+- 在“QQ 连接”页启动/停止 QQ + NapCat、查看登录状态、打开协议端控制台
+- 协议端地址可改，适配任何 OneBot v11 正向 WebSocket/HTTP 实现
 
 ## 界面一览
 
@@ -74,16 +76,22 @@
 
 ## 安装与使用
 
-1. **装协议端**：SnowLuma 是独立第三方项目（自带 EULA，不随本仓库分发），从其官方渠道获取后解压到项目根目录，目录名保持 `snowluma`；任何提供 OneBot v11 正向 WebSocket 的协议端都可以替代
-2. **启动**：双击 `启动QQ机器人.bat`（或 `npm start`），扫码登录 QQ
-3. **配置**：设置页顶部体检卡会告诉你缺什么——填接口地址和 Key → 选模型 → 勾白名单，三步完成
+1. **安装 QQ**：本机使用 `/Applications/QQ.app`（推荐 Mac App Store 版本）。
+2. **安装 NapCat**：使用 [NapCat 官方 Mac 安装器](https://github.com/NapNeko/NapCat-Mac-Installer) 完成安装并“修改 QQ”；NapCat 不随本仓库分发。
+3. **启动开发版**：执行 `npm install`，然后 `npm start`。
+4. **连接 QQ**：进入顶部“QQ 连接”页，点击“启动 NapCat”；若 QQ 已在普通模式运行，界面会先征求确认再重启。
+5. **配置机器人**：填入模型 Base URL 与 API Key、选择模型、配置聊天白名单。
 
 ```bash
 npm install          # 装依赖
 npm start            # 桌面端启动
 npm run server       # headless 模式：浏览器打开 http://127.0.0.1:3210
 npm test             # 全部测试（149 项）：功能自测 + 前端渲染 + 滚动加载 + 用量端到端
+npm run pack:mac     # 生成未签名的 arm64 .app（本机开发）
+npm run dist:mac     # 生成未签名的 arm64 DMG + ZIP（本机分发）
 ```
+
+本机开发数据保存在 `runtime/data/`；打包版数据保存在 macOS 的 `Application Support/QQ Agent Mac/data/`。详细路径和排障见 [macOS 部署说明](docs/MACOS_DEPLOYMENT.md)。
 
 ### 分发前脱敏
 
@@ -113,10 +121,10 @@ node scripts/sanitize-release.mjs             # 清空 Key / 白名单 / 存档 
 ## 致谢
 
 - **[Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)**——本项目由其彻底改造而来，"仿真群友"的思路是这一切的起点
-- **SnowLuma**——QQ 协议端（OneBot v11）提供者，独立第三方项目，受其自身 EULA 约束
+- **NapCatQQ / NapCat-Mac-Installer**——macOS QQ 协议端与安装器，均为独立第三方项目，受其自身许可约束
 
 由 **Kondius** 开发与维护。
 
 ## 许可
 
-本项目以 MIT 许可发布（见 [LICENSE](LICENSE)）。前置依赖 SnowLuma 是独立项目，受其自身许可约束，不受本项目许可覆盖。
+本项目以 MIT 许可发布（见 [LICENSE](LICENSE)）。前置依赖 NapCat 与 QQ 是独立项目，不受本项目许可覆盖。
