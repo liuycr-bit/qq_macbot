@@ -103,6 +103,116 @@ QQ Agent Mac
 
 路径和协议地址可以在“设置 → QQ / OneBot（NapCat）”中修改。
 
+## 本机安装与配置
+
+以下流程来自 2026-09-21 的实际安装和联调，不是仅根据源码推测。当前走通的环境为 Apple Silicon Mac、QQ `6.9.99-51802`、NapCat `4.18.28`、NapCat Mac Installer `v1.6`、Node.js `24.19.0` 和 npm `12.0.2`。其他版本可能出现界面或目录差异。
+
+### 1. 安装 macOS QQ
+
+1. 安装 QQ，并确认应用位于 `/Applications/QQ.app`。
+2. 正常启动一次 QQ 后退出，避免安装器修改程序入口时 QQ 仍在运行。
+3. 不要手工删除或覆盖 `QQ.app` 内的文件，入口切换和恢复统一交给 NapCat Mac Installer。
+
+### 2. 安装 NapCat 并切换 QQ 入口
+
+1. 从 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer) 获取 macOS 安装器。本次联调使用 `v1.6` 的 Apple Silicon 安装包。
+2. 打开安装器并执行 NapCat 安装。当前安装结果位于：
+
+   ```text
+   ~/Library/Containers/com.tencent.qq/Data/Documents/napcat
+   ```
+
+3. 如果安装器提示无法写入 QQ 容器目录，在“系统设置 → 隐私与安全性”中为 **NapCat 安装器**开启：
+
+   - App 管理；
+   - 完全磁盘访问权限。
+
+   授权后退出并重新打开安装器，再重新执行安装。无需关闭 SIP，也不要使用来源不明的注入脚本。
+
+4. 在安装器中把“程序入口”切换为 **NapCat**。系统要求管理员密码时，只在 macOS 自带的授权窗口中输入，不要把密码写进命令、配置文件或聊天记录。
+5. 使用安装器的“使用终端打开”，或运行：
+
+   ```bash
+   '/Applications/QQ.app/Contents/MacOS/QQ' --no-sandbox
+   ```
+
+6. 在 QQ 窗口完成登录。终端日志出现 NapCat WebUI 地址后，说明协议端已经随 QQ 启动。
+
+### 3. 配置 NapCat OneBot v11
+
+1. 打开 `http://127.0.0.1:6099/webui`。首次进入需要使用 NapCat 启动日志或本机 `webui.json` 中的 WebUI 令牌；令牌不要提交到 Git，也不要发给其他人。
+2. 进入“网络配置”，新建并启用 HTTP 服务器：
+
+   | 项目 | 值 |
+   |---|---|
+   | 名称 | `QQ Agent HTTP` |
+   | Host | `127.0.0.1` |
+   | Port | `3000` |
+   | 消息格式 | `Array` |
+   | CORS | 关闭 |
+   | 启用 WebSocket | 关闭 |
+   | Token | 使用随机强令牌 |
+
+3. 新建并启用 WebSocket 服务器：
+
+   | 项目 | 值 |
+   |---|---|
+   | 名称 | `QQ Agent WebSocket` |
+   | Host | `127.0.0.1` |
+   | Port | `3001` |
+   | 消息格式 | `Array` |
+   | 上报自身消息 | 关闭 |
+   | 强制推送事件 | 开启 |
+   | 心跳间隔 | `30000` 毫秒 |
+   | Token | 使用随机强令牌 |
+
+4. 保存后确认两张配置卡片均处于启用状态。服务只绑定 `127.0.0.1`，不要为了省事改成 `0.0.0.0` 对局域网开放。
+
+### 4. 安装并启动 QQ Agent
+
+在仓库目录执行：
+
+```bash
+npm install
+npm start
+```
+
+当前 `package-lock.json` 记录的是 npmmirror 下载地址。npm 12 在“当前 registry 与锁文件来源不一致”时可能报 `EALLOWREMOTE`，此时使用与锁文件一致的镜像安装：
+
+```bash
+npm install --registry=https://registry.npmmirror.com
+```
+
+如果 Electron 安装脚本已执行但主程序下载失败，可使用同一镜像补充下载后再启动：
+
+```bash
+ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ \
+  npm rebuild electron --registry=https://registry.npmmirror.com
+npm start
+```
+
+npmmirror 是第三方镜像；有条件访问 npm 和 Electron 官方下载源时，可使用官方来源。项目仅允许 Electron 必需的安装脚本，Windows 打包依赖 `electron-winstaller` 的安装脚本在本机 macOS 开发中明确禁用。
+
+### 5. 在 QQ Agent 中连接 NapCat
+
+1. 打开“设置 → QQ / OneBot（NapCat）”。
+2. 保持默认地址：
+
+   - WebSocket：`ws://127.0.0.1:3001`
+   - HTTP：`http://127.0.0.1:3000`
+
+3. 分别填写 NapCat WebSocket 和 HTTP 配置中的 Token，然后保存。保存后 QQ Agent 会立即重连，无需重启 QQ。
+4. 打开“QQ 连接”页面。出现“OneBot 已连接”并能显示当前 QQ 昵称，表示进程、端口、鉴权和登录信息链路已经打通。
+5. macOS 可能允许 QQ Agent 连接本机端口，却阻止它读取 QQ 沙盒目录。此时页面会显示“目录读取受限”，但不会再误报 NapCat 未安装。手动保存两个 Token 即可正常连接；完全磁盘访问权限只影响自动识别，不是协议连接的必需条件。
+
+### 6. 模型和消息权限
+
+OneBot 连接成功后，仍需在 QQ Agent 中配置模型 API、模型和聊天白名单。白名单与自动响应策略确认前，不要开启全量聊天响应。本仓库目前只完成登录信息读取，尚未向真实群聊或私聊发送测试消息。
+
+### 7. 恢复原版 QQ
+
+需要停用 NapCat 时，先退出 QQ，再在 NapCat Mac Installer 中把程序入口切换回 **QQ**。确认原版 QQ 可以正常启动后，再决定是否卸载 NapCat 或撤销安装器权限。不要直接删除入口文件，否则可能导致 QQ 无法启动。
+
 ## 开发运行
 
 以下命令是仓库中已经配置并已在本机启动过的开发入口；启动成功不等于完整测试或发布验收：
