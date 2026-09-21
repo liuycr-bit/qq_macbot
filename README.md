@@ -1,7 +1,7 @@
 # QQ Agent Mac
 
 ![平台](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-lightgrey)
-![阶段](https://img.shields.io/badge/status-local%20verified-brightgreen)
+![阶段](https://img.shields.io/badge/release-v0.3.0--macos.1-blue)
 ![协议](https://img.shields.io/badge/protocol-OneBot%20v11-blue)
 ![许可](https://img.shields.io/badge/license-MIT-green)
 
@@ -9,7 +9,7 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 
 本仓库已在 Apple Silicon Mac 上运行 QQ Agent 的 Electron 控制台和机器人核心，并通过**独立安装的 NapCat**连接 macOS QQ。QQ Agent 与 NapCat 之间使用 OneBot v11 正向 WebSocket 接收事件、使用 HTTP API 调用动作；模型侧继续兼容 OpenAI 风格的 API。
 
-> 当前本机移植版已完成 NapCat 安装、QQ 入口切换、真实账号登录、OneBot 双端口连接、模型调用和真实 QQ 消息收发，用户已于 2026-09-21 人工测试并确认正常工作。完整自动化回归、应用构建、签名、公证和正式分发验收仍未执行。
+> `v0.3.0-macos.1` 是首个 macOS Apple Silicon（arm64）发布版本，已生成 `.app`、DMG 和 ZIP。OneBot 连接、模型调用、真实 QQ 消息收发、自定义人设和图片获取已完成人工联调；完整自动化回归、多机器兼容验证、Apple 签名和公证尚未完成。
 
 ## 当前进度
 
@@ -20,10 +20,10 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 | macOS 移植方案 | 已完成 | 已确定 Electron + 独立 NapCat + OneBot v11 的实现路线 |
 | macOS 连接管理基础代码 | 已完成 | 已增加 QQ/NapCat 路径探测、状态读取、启停确认、WebUI 打开和 OneBot 配置候选读取 |
 | “QQ 连接”控制界面 | 已完成 | 已替换原 Windows SnowLuma 控制入口，展示 QQ、NapCat、登录和 OneBot 状态 |
-| 本机联调体检 | 已完成 | 只读检查 QQ、NapCat、加载器、入口、配置和 OneBot 双端口，并提示下一步 |
+| 部署体检 | 已完成 | 只读检查 QQ、NapCat、加载器、入口、配置和 OneBot 双端口，并提示下一步 |
 | 本地隐私边界 | 已完成 | 上游遥测、更新检查和社区上传在本机移植版中默认关闭 |
 | 外部 OneBot 模式 | 已保留 | 可填写自定义 WebSocket、HTTP 地址和访问令牌 |
-| Apple Silicon 构建配置 | 已写入 | 提供 arm64 `.app`、DMG 和 ZIP 构建命令，但本阶段未执行构建 |
+| Apple Silicon 发布包 | 已构建 | 已生成 arm64 `.app`、DMG 和 ZIP，版本为 `v0.3.0-macos.1` |
 | NapCat 本机安装 | 已完成 | 已通过官方 Mac 安装器安装 NapCat 4.18.28，并将 QQ 入口切换为 NapCat |
 | QQ 登录与协议连接 | 已完成 | QQ 已登录；WebSocket 3001、HTTP 3000 可达；QQ Agent 已读取登录信息 |
 | 模型 API 调用 | 已完成 | DeepSeek 模型请求已在本机通过，Clash Fake-IP 环境下可自动回退到真实 DNS 解析 |
@@ -32,7 +32,7 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 | 图片获取 | 已完成 | Fake-IP 环境下先解析真实公网地址，再执行原有内网地址安全拦截；本机人工测试正常 |
 | macOS 权限受限适配 | 已完成 | QQ 沙盒目录不可读时不再误报未安装，可使用手动令牌完成本机连接 |
 | 移植后的完整测试 | 未执行 | 上游测试脚本仍在，但不能据此声称当前移植版测试通过 |
-| 签名、公证和正式分发 | 未实施 | 当前构建配置默认无签名，仅面向本机开发 |
+| Apple 签名和公证 | 未实施 | 当前发布包未签名、未公证，首次打开可能需要右键选择“打开” |
 
 详细设计见 [第一阶段设计](docs/PHASE1_DESIGN.md)，部署边界和后续联调步骤见 [macOS 部署说明](docs/MACOS_DEPLOYMENT.md)。
 
@@ -81,7 +81,7 @@ QQ Agent Mac
 
 ## 继承的上游能力
 
-以下能力来自直接上游 `K0nd1us/QQ-agent`。其中模型调用、OneBot 连接、真实 QQ 消息收发、自定义人设和图片获取的核心路径已在本机人工联调通过；其余能力仍未针对本次 macOS 移植完成完整自动化回归：
+以下能力来自直接上游 `K0nd1us/QQ-agent`。其中模型调用、OneBot 连接、真实 QQ 消息收发、自定义人设和图片获取的核心路径已完成人工联调；其余能力仍未针对本次 macOS 移植完成完整自动化回归：
 
 - 群聊、私聊消息接入和响应策略。
 - OpenAI 兼容模型配置、模型目录与成本记录。
@@ -214,7 +214,7 @@ npmmirror 是第三方镜像；有条件访问 npm 和 Electron 官方下载源�
 
 OneBot 连接成功后，还需在 QQ Agent 中配置模型 API、模型和聊天白名单。白名单与自动响应策略确认前，不要开启全量聊天响应。
 
-当前本机已完成模型连通、真实 QQ 消息收发、自定义人设生效和图片获取的人工测试，机器人可正常工作。该结论仅对应当前机器和当前配置，不代表已经完成跨机器兼容、自动化回归、应用签名或正式发布验收。
+已验证模型连通、真实 QQ 消息收发、自定义人设生效和图片获取的核心流程。该验证不等同于完整自动化回归、多机器兼容验证、Apple 签名或公证。
 
 ### 7. 恢复原版 QQ
 
@@ -222,7 +222,7 @@ OneBot 连接成功后，还需在 QQ Agent 中配置模型 API、模型和聊�
 
 ## 开发运行
 
-以下命令是仓库中已经配置并已在本机启动、联调通过的开发入口；本机人工联调不等于完整自动化测试或发布验收：
+以下命令是仓库中已经配置的开发和构建入口。人工联调不等于完整自动化测试、Apple 签名或公证：
 
 ```bash
 npm install
@@ -238,12 +238,12 @@ npm run pack:mac    # 构建未签名的 arm64 .app
 npm run dist:mac    # 构建未签名的 arm64 DMG 和 ZIP
 ```
 
-本机已经通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer) 完成安装和入口切换。其他机器首次部署时仍需执行该步骤，并在 NapCat WebUI 中启用 OneBot v11 WebSocket 和 HTTP 服务。若 macOS 阻止 QQ Agent 读取 QQ 沙盒目录，可在设置中手动填写 OneBot 令牌；这不影响本机协议连接。
+NapCat 需通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer) 独立安装并切换 QQ 入口，同时在 NapCat WebUI 中启用 OneBot v11 WebSocket 和 HTTP 服务。若 macOS 阻止 QQ Agent 读取 QQ 沙盒目录，可在设置中手动填写 OneBot 令牌；目录读取权限不影响已正确配置的协议连接。
 
 ### `.app` 打包版说明
 
 1. `.app` 只包含 QQ Agent，QQ 和 NapCat 仍需独立安装。
-2. 当前是未签名本机版，首次打开可能需要右键选择“打开”。
+2. 当前发布包未签名、未公证，首次打开可能需要右键选择“打开”。
 
 ## 源码来源与归属
 
@@ -262,4 +262,4 @@ npm run dist:mac    # 构建未签名的 arm64 DMG 和 ZIP
 
 > **本仓库当前的 macOS 移植设计、本机适配开发、真实协议与消息联调、文档整理和 Git 提交由 OpenAI Codex 协助完成。**
 >
-> Codex 的工作建立在上述开源项目和原作者成果之上，不改变原项目的作者归属、版权声明或第三方许可。当前本机人工联调已通过；完整自动化测试、构建、签名、公证和正式分发验收仍以之后的实际结果为准。
+> Codex 的工作建立在上述开源项目和原作者成果之上，不改变原项目的作者归属、版权声明或第三方许可。核心流程已完成人工联调并生成首个 arm64 发布包；完整自动化测试、多机器兼容验证、签名和公证仍以之后的实际结果为准。
