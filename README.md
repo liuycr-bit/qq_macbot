@@ -1,130 +1,135 @@
-# QQ Agent（桌面端）
+# QQ Agent Mac
 
 ![平台](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-lightgrey)
-![技术栈](https://img.shields.io/badge/stack-Node.js%20%7C%20原生前端-orange)
-![测试](https://img.shields.io/badge/tests-149%20passed-brightgreen)
+![阶段](https://img.shields.io/badge/status-Phase%201-yellow)
+![协议](https://img.shields.io/badge/protocol-OneBot%20v11-blue)
+![许可](https://img.shields.io/badge/license-MIT-green)
 
-一个跑在 Apple Silicon Mac 上的 QQ 群聊机器人：通过独立安装的 NapCat 接入 QQ，填入任意 OpenAI 兼容模型即可使用。
-事件驱动 + 无状态会话架构，每次处理的 token 成本恒定可控；所有操作都在图形控制台里完成，不用碰命令行。
+QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进行的 macOS 本机移植。
 
-从 [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge) 彻底改造而来的独立 QQ agent 应用。
+本仓库计划在 Apple Silicon Mac 上运行 QQ Agent 的 Electron 控制台和机器人核心，并通过**独立安装的 NapCat**连接 macOS QQ。QQ Agent 与 NapCat 之间使用 OneBot v11 正向 WebSocket 接收事件、使用 HTTP API 调用动作；模型侧继续兼容 OpenAI 风格的 API。
 
-## 能实现什么
+> 当前仓库处于第一阶段：已完成移植设计和基础代码改造，尚未完成真实 QQ 登录、消息收发、完整测试、应用构建、签名或发布验收。本文不会把“已有代码”表述成“已经实机验证可用”。
 
-- **像真人一样混群**：被 @ 或被叫到时回话，平时看心情插嘴；会发文字、表情包、戳一戳，会引用、会 @ 人，知道什么时候该闭嘴
-- **记住每个群友**：双向长期记忆——它记得谁是什么风格、爱什么梗、雷点是什么，下次聊天自然带上；记忆页随时可查看、手动编辑
-- **看得懂图、上得了网**：视觉模型直接看消息里的图片；内置 6 家搜索服务（含免 Key 的 Bing 网页解析），还能自己加任意兼容搜索服务
-- **花多少看多少**：每次调用的 token 和成本精确记录，按天 / 按会话 / 按模型三个维度统计，缓存命中率、峰谷分时计价、图片计费口径全标清楚
-- **零编程门槛**：所有配置都在控制台点选——白名单从 QQ 里直接勾选群，模型从模型目录里点选切换，不用查群号、不用写配置
+## 当前进度
 
-## 技术架构
+状态更新于 2026-09-21。
 
-**事件驱动 + 无状态会话（成本控制的核心）**
+| 项目 | 状态 | 说明 |
+|---|---|---|
+| macOS 移植方案 | 已完成 | 已确定 Electron + 独立 NapCat + OneBot v11 的实现路线 |
+| macOS 连接管理基础代码 | 已完成 | 已增加 QQ/NapCat 路径探测、状态读取、启停确认、WebUI 打开和 OneBot 配置候选读取 |
+| “QQ 连接”控制界面 | 已完成 | 已替换原 Windows SnowLuma 控制入口，展示 QQ、NapCat、登录和 OneBot 状态 |
+| 外部 OneBot 模式 | 已保留 | 可填写自定义 WebSocket、HTTP 地址和访问令牌 |
+| Apple Silicon 构建配置 | 已写入 | 提供 arm64 `.app`、DMG 和 ZIP 构建命令，但本阶段未执行构建 |
+| NapCat 本机安装 | 未执行 | 本仓库不自动安装、不注入 NapCat，也不修改 `QQ.app` |
+| QQ 登录与真实消息链路 | 未验证 | 留待第二阶段使用真实账号和 NapCat 配置联调 |
+| 移植后的完整测试 | 未执行 | 上游测试脚本仍在，但不能据此声称当前移植版测试通过 |
+| 签名、公证和正式分发 | 未实施 | 当前构建配置默认无签名，仅面向本机开发 |
 
-1. 群聊消息持续写入本地 JSON 存档（每条带时间与已读状态）
-2. 每次有新消息（或主动机会），**新开一个独立会话**：提示词 = 静态系统提示（人设/规则/策略）+ 存档摘要 + 本次新消息
-3. 会话结束即弃置，LLM 层面零历史——一次处理的成本是恒定小份，不随聊天量膨胀
-4. 处理期间新来的消息只写存档；本次结束后发现未读 → 自动再开新会话，直到清空
-5. 长期信息走记忆工具持久化，跨运行生效
+详细设计见 [第一阶段设计](docs/PHASE1_DESIGN.md)，部署边界和后续联调步骤见 [macOS 部署说明](docs/MACOS_DEPLOYMENT.md)。
 
-**整体组成**
+## 架构
 
-- **协议端**：通过 OneBot v11 正向 WebSocket 接 QQ（macOS 默认配 NapCat，也可连接任意外部 OneBot）
-- **大脑**：任意 OpenAI 兼容 API——官方 / 中转站 / 本地网关均可，模型在设置里自选
-- **桌面壳**：Electron，托盘常驻、开机自启、关窗不退出、端口被占自动让位
-- **控制台**：零框架原生 HTML/CSS/JS，明暗双主题 + 跟随系统，带完整设计 token 体系
-- **安全边界**：工具天然绑定会话（模型无法把消息发到别的群）、发送白名单 + 限频、联网抓取带完整 SSRF 防护（DNS 校验 / IP 固定 / 手动跟重定向）、图片地址禁内网
-
-## 设置项都能做什么
-
-**模型 API**
-- 多提供商模型目录：填 Base URL + Key，点「获取列表」自动拉模型，选中即切换；中转站返回几百个模型时内置搜索 + 厂商/模型双栏
-- 一键测试：发个 ping 立刻验证地址/Key/模型通不通，显示延迟
-- 成本核算：内置 139 个模型的官方价格表自动匹配；走中转站可关掉官方价自填单价，支持「渠道：模型」两级定价、峰谷分时、图片计费规则提示
-- 视觉开关：模型不支持图片时关掉，看图工具自动从提示词移除
-
-**聊天设置**
-- **响应档位滑条**（省 token 核心）：0~100 无级调节——1 档仅 @ 响应、2 档 +关键词、3 档按概率随机响应（滑条位置线性决定概率）、4 档全响应；没命中的消息直接标已读，零 token 消耗。触发原因决定上下文条数：被 @ 时永远带最多上下文
-- **表情包积极程度** 0~3 档：不鼓励 / 偶尔 / 较积极 / 表情包爱好者（提示词层面引导，不强制）
-- 人设系统：内置「小鲸鱼」角色卡开箱即用，多套模板一键填充可改；参与度风格（安静/普通/活跃）可调
-- 关键词、每群独立开关、私聊开关、屏蔽名单（被屏蔽者不存档、不触发、不进提示词）
-
-**记忆**
-- 自动记录对群友的长期印象；可手动触发整理（合并重复、删过时），或对单个群友「更新记忆」
-
-**搜索服务**
-- 6 家内置（Bing 免 Key / DeepSeek / 智谱 / 博查 / 百度千帆 / 秘塔）+ 自定义添加任意兼容服务，可加多个
-
-**白名单**
-- 从 QQ 账号拉群列表/好友列表直接勾选；机器人只对名单内的会话工作
-
-**桌面端**
-- 托盘常驻 / 开机自启 / 关窗不退出；明暗主题；版本更新检查（发现新版本时直接提示）
-
-**QQ / OneBot**
-- 自动识别官方 NapCat Mac Installer 的安装目录、WebUI 与账号配置
-- 在“QQ 连接”页启动/停止 QQ + NapCat、查看登录状态、打开协议端控制台
-- 协议端地址可改，适配任何 OneBot v11 正向 WebSocket/HTTP 实现
-
-## 界面一览
-
-- **会话**：每次处理一个会话卡片，完整留档——提示词、思考、工具调用与结果、实际发出的每条消息、用量；运行中实时刷新
-- **存档**：每个群/好友的消息库，未读标记一目了然；可手动唤醒一次处理或全部标已读
-- **记忆**：每个群友一份档案，可编辑、删除、单独更新
-- **用量**：三维度统计 + 下钻明细 + 调用次数明细（17 种工具按类别分组的趣味统计）
-- **设置**：以上所有
-
-## 安装与使用
-
-1. **安装 QQ**：本机使用 `/Applications/QQ.app`（推荐 Mac App Store 版本）。
-2. **安装 NapCat**：使用 [NapCat 官方 Mac 安装器](https://github.com/NapNeko/NapCat-Mac-Installer) 完成安装并“修改 QQ”；NapCat 不随本仓库分发。
-3. **启动开发版**：执行 `npm install`，然后 `npm start`。
-4. **连接 QQ**：进入顶部“QQ 连接”页，点击“启动 NapCat”；若 QQ 已在普通模式运行，界面会先征求确认再重启。
-5. **配置机器人**：填入模型 Base URL 与 API Key、选择模型、配置聊天白名单。
-
-```bash
-npm install          # 装依赖
-npm start            # 桌面端启动
-npm run server       # headless 模式：浏览器打开 http://127.0.0.1:3210
-npm test             # 全部测试（149 项）：功能自测 + 前端渲染 + 滚动加载 + 用量端到端
-npm run pack:mac     # 生成未签名的 arm64 .app（本机开发）
-npm run dist:mac     # 生成未签名的 arm64 DMG + ZIP（本机分发）
+```text
+macOS QQ.app + NapCat
+          │
+          │ OneBot v11
+          │ WebSocket 事件 / HTTP 动作
+          ▼
+QQ Agent Mac
+├── ConnectorManager：QQ/NapCat 探测、启停、配置同步、WebUI
+├── OneBotClient：消息接收与动作调用
+├── Orchestrator：会话编排与工具调用
+├── Store / Memory：本地消息存档与长期记忆
+└── Electron + Web UI：本机图形控制台
+          │
+          │ OpenAI-compatible API
+          ▼
+模型提供商、中转服务或本地模型网关
 ```
 
-本机开发数据保存在 `runtime/data/`；打包版数据保存在 macOS 的 `Application Support/QQ Agent Mac/data/`。详细路径和排障见 [macOS 部署说明](docs/MACOS_DEPLOYMENT.md)。
+### 设计边界
 
-### 分发前脱敏
+- **协议端独立部署**：NapCat 不进入本仓库的安装包，由其官方 Mac 安装器负责安装、更新、卸载和 QQ 入口切换。
+- **不静默关闭 QQ**：普通 QQ 正在运行而 OneBot 未就绪时，界面应先要求用户确认，再重新启动 QQ。
+- **退出应用不退出 QQ**：关闭 QQ Agent 不会连带终止 QQ/NapCat。
+- **模型供应商不锁定**：保留 OpenAI 兼容接口，不把 NapCat 与特定模型厂商绑定。
+- **敏感数据不入库**：真实 API Key、QQ 登录态、聊天存档和长期记忆不得提交到 Git。
 
-分享自己的部署副本前执行：
+## 第一阶段的移植改动
+
+本仓库相对上游基线主要完成了以下改动：
+
+- 新增 `src/connector-manager.js`，负责 macOS QQ/NapCat 状态、路径、启停和 OneBot 配置候选管理。
+- 在 `src/app.js` 中用通用连接管理器替代 Windows SnowLuma 进程控制，并增加 `/api/connector/*` 接口。
+- 在 `src/config.js` 中增加 `napcat-macos` 与 `external-onebot` 两种连接方式，同时保留旧配置迁移逻辑。
+- 将界面中的 SnowLuma 页面改为“QQ 连接”，增加 NapCat、QQ、WebUI 和 OneBot 状态及操作入口。
+- 调整 Electron 的 macOS 数据目录、托盘图标、硬件加速和启动行为。
+- 增加 Apple Silicon 的本机构建配置，以及第一阶段设计和 macOS 部署文档。
+
+## 继承的上游能力
+
+以下能力来自直接上游 `K0nd1us/QQ-agent`，相关代码仍保留在本仓库中，但**尚未针对本次 macOS 移植完成回归验证**：
+
+- 群聊、私聊消息接入和响应策略。
+- OpenAI 兼容模型配置、模型目录与成本记录。
+- 人设、上下文编排、长期记忆和本地消息存档。
+- 图片理解、联网搜索、表情包和 OneBot 工具调用。
+- 白名单、屏蔽名单、用量统计和图形控制台。
+- Electron 托盘运行、Headless 服务模式及上游测试脚本。
+
+具体行为应以当前源码和后续实机联调结果为准。
+
+## 环境与目录
+
+- 运行平台：macOS，当前优先支持 Apple Silicon（arm64）。
+- Node.js：`>= 20`。
+- QQ 默认路径：`/Applications/QQ.app`。
+- NapCat 程序默认路径：`~/Library/Containers/com.tencent.qq/Data/Documents/napcat`。
+- NapCat 数据默认路径：`~/Library/Containers/com.tencent.qq/Data/Library/Application Support/QQ/NapCat`。
+- OneBot 默认地址：WebSocket `ws://127.0.0.1:3001`，HTTP `http://127.0.0.1:3000`。
+- 开发数据：`runtime/data/`。
+- 打包版数据：`~/Library/Application Support/QQ Agent Mac/data/`。
+- 构建输出：`release/`。
+
+路径和协议地址可以在“设置 → QQ / OneBot（NapCat）”中修改。
+
+## 开发运行
+
+以下命令是仓库中已经配置的开发入口，不代表本阶段已经完成运行验收：
 
 ```bash
-node scripts/sanitize-release.mjs --dry-run   # 先看会清理什么
-node scripts/sanitize-release.mjs             # 清空 Key / 白名单 / 存档 / 登录态
+npm install
+npm start
 ```
 
-有点忘了为什么要开发这个了，本来就是看见一个qq机器人的项目，然后自己就去搭建一下拿来玩，不过没想到效果确实还不错，所以也是想到了一些可以优化节省成本的方式，然后就做了，效果至少也还不错。
+其他脚本：
 
-改完发现省成本省的的确特别多，然后就拿去评论区装个大b（笑），不过当时也是想着把我用得这个版本里面我使用过的痕迹都删了就可以发出去给大伙用了。
+```bash
+npm run server      # Headless 服务，默认访问 http://127.0.0.1:3210
+npm test            # 运行上游保留的测试集合
+npm run pack:mac    # 构建未签名的 arm64 .app
+npm run dist:mac    # 构建未签名的 arm64 DMG 和 ZIP
+```
 
-但插眼的人有点过于多了，如果这个做的太糊弄感觉也不太好，想了想就多做了点东西，然后关注的人还在一直增长，插眼的人越来越多，也有一些的确提意见的，做着做着就越来越膨胀了，实际上核心的功能还是就那么一个机器人，说实话，原来那个项目的提示词写的是效果真好，如果没这个效果的话我大概率也就用两天就扔了。
+第一次真实联调还需要用户通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer) 安装 NapCat、切换 QQ 入口，并在 NapCat WebUI 中启用 OneBot v11 WebSocket 和 HTTP 服务。
 
-其实现在之所以加一个意见收集功能和一个金句上传，其实是有点想做成一个算是社区的东西，毕竟独乐乐不如众乐乐，这种东西大家一起玩才好玩，让大家都看看肥鱼都会说些什么骚话（或者情话。谁知道。）
+## 源码来源与归属
 
-最近的确是一直通宵坐在这边搞，一天基本上去除睡觉时间都在做这个东西，毕竟如果做自己都要拿来用的东西的话的确不累，再加上一想到有很多人会用这个，也许他们也会觉得大肥鱼很有趣（至少我的朋友都觉得...吧），那么至少我也做了一份贡献在里面，也会有很多源源不断的灵感，再加上现在目前也是处于一个长久的无业的状态，的确求职也相当的失败的man，因此也需要这么一个东西来让我感觉我暂时还“处于一种有用的活着的状态”。
+本仓库的来源关系如下：
 
-于是QQ-agent诞生了。
+1. **直接代码上游**：[K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent)，本次移植以提交 [`72f537f`](https://github.com/K0nd1us/QQ-agent/commit/72f537f947143e2e153597542cb849cbed777771) 为基线。
+2. **上游标注的历史来源**：[Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)。该项目是 `K0nd1us/QQ-agent` README 中说明的改造起点；本次 macOS 移植并非直接从该仓库开始。
+3. **macOS 协议端参考**：[NapNeko/NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer)，第一阶段按 v1.6 / 提交 [`b4fd38f`](https://github.com/NapNeko/NapCat-Mac-Installer/commit/b4fd38faa7cccea1ce0be141cb26925c8f5f6338) 的目录和启动方式设计。NapCat 及其安装器是独立项目，不随本仓库分发。
+4. **QQ 客户端**：由腾讯提供，是独立的闭源软件，不属于本仓库，也不受本仓库许可覆盖。
 
-以后也会有更多的版本，只要我的灵感和大家的灵感还存在的话。
+上游版本检查记录见 [UPSTREAM_CHECK.md](UPSTREAM_CHECK.md)。移植代码沿用仓库现有 MIT 许可证和版权声明，详见 [LICENSE](LICENSE)。使用本项目时还应分别遵守 QQ、NapCat 及其他第三方依赖的许可和使用规则。
 
-我爱你们。
+---
 
-## 致谢
+## 重要：Codex 移植开发声明
 
-- **[Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)**——本项目由其彻底改造而来，"仿真群友"的思路是这一切的起点
-- **NapCatQQ / NapCat-Mac-Installer**——macOS QQ 协议端与安装器，均为独立第三方项目，受其自身许可约束
-
-由 **Kondius** 开发与维护。
-
-## 许可
-
-本项目以 MIT 许可发布（见 [LICENSE](LICENSE)）。前置依赖 NapCat 与 QQ 是独立项目，不受本项目许可覆盖。
+> **本仓库当前的 macOS 第一阶段移植设计、基础代码改造、文档整理和 Git 提交由 OpenAI Codex 协助完成。**
+>
+> Codex 的工作建立在上述开源项目和原作者成果之上，不改变原项目的作者归属、版权声明或第三方许可。当前内容仍处于开发阶段，实际运行效果应以之后的人工联调、测试和验收结果为准。
