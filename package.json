@@ -91,12 +91,12 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/liuycr-bit/qq_macbot.git"
+    "url": "https://github.com/liuycr-bit/mac_qq_bot.git"
   },
   "bugs": {
-    "url": "https://github.com/liuycr-bit/qq_macbot/issues"
+    "url": "https://github.com/liuycr-bit/mac_qq_bot/issues"
   },
-  "homepage": "https://github.com/liuycr-bit/qq_macbot#readme",
+  "homepage": "https://github.com/liuycr-bit/mac_qq_bot#readme",
   "allowScripts": {
     "electron@33.4.11": true,
     "electron-winstaller@5.4.0": false
