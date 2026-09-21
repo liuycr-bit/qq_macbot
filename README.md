@@ -9,7 +9,7 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 
 本仓库已在 Apple Silicon Mac 上运行 QQ Agent 的 Electron 控制台和机器人核心，并通过**独立安装的 NapCat**连接 macOS QQ。QQ Agent 与 NapCat 之间使用 OneBot v11 正向 WebSocket 接收事件、使用 HTTP API 调用动作；模型侧继续兼容 OpenAI 风格的 API。
 
-> `v0.3.0-macos.1` 是首个 macOS Apple Silicon（arm64）发布版本，已在 [GitHub Releases](https://github.com/liuycr-bit/mac_qq_bot/releases/tag/v0.3.0-macos.1) 提供 DMG 和 ZIP。OneBot 连接、模型调用、真实 QQ 消息收发、自定义人设和图片获取已完成人工联调；完整自动化回归、多机器兼容验证、Apple 签名和公证尚未完成。
+> `v0.3.0-macos.1` 是 macOS Apple Silicon（arm64）发布版本，已在 [GitHub Releases](https://github.com/liuycr-bit/mac_qq_bot/releases/tag/v0.3.0-macos.1) 提供 DMG 和 ZIP。OneBot 连接、模型调用、真实 QQ 消息收发、自定义人设和图片获取已完成人工联调；完整自动化回归、多机器兼容验证、Apple 签名和公证尚未完成。
 
 ## 当前进度
 
@@ -262,7 +262,7 @@ NapCat 需通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-In
 
 > **本项目的源码拉取、macOS 移植设计与开发、编译、构建、文档整理、Git 提交和 GitHub Release 发布等工作，均由 OpenAI Codex + GPT-5.6 Sol 在用户授权与配合下完成。**
 >
-> Codex + GPT-5.6 Sol 的工作建立在上述开源项目和原作者成果之上，不改变原项目的作者归属、版权声明或第三方许可。核心流程已完成人工联调并发布首个 arm64 版本；完整自动化测试、多机器兼容验证、签名和公证仍以之后的实际结果为准。
+> Codex + GPT-5.6 Sol 的工作建立在上述开源项目和原作者成果之上，不改变原项目的作者归属、版权声明或第三方许可。核心流程已完成人工联调并发布 arm64 版本；完整自动化测试、多机器兼容验证、签名和公证仍以之后的实际结果为准。
 
 ---
 
