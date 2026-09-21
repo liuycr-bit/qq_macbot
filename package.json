@@ -111,5 +111,9 @@
   "bugs": {
     "url": "https://github.com/liuycr-bit/qq_macbot/issues"
   },
-  "homepage": "https://github.com/liuycr-bit/qq_macbot#readme"
+  "homepage": "https://github.com/liuycr-bit/qq_macbot#readme",
+  "allowScripts": {
+    "electron@33.4.11": true,
+    "electron-winstaller@5.4.0": false
+  }
 }

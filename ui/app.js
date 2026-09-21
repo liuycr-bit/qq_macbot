@@ -995,8 +995,13 @@ async function loadSnowlumaPage({ quiet = false } = {}) {
     const connector = s.connector || {};
     const running = !!connector.qqRunning;
     const onebotConnected = !!s.onebot?.connected;
-    const installed = !!connector.napcatInstalled;
+    const directoryRestricted = !!(connector.napcatPermissionDenied || connector.onebotConfigPermissionDenied || connector.webuiPermissionDenied);
+    const protocolReady = !!(connector.onebotReady && connector.onebotHttpReady);
+    const installed = !!connector.napcatInstalled || !!(directoryRestricted && connector.entryPatched && protocolReady);
     const patched = !!connector.entryPatched;
+    const napcatStateText = connector.napcatInstalled
+      ? (patched ? '已安装并已切换入口' : '已安装，尚未切换 QQ 入口')
+      : (installed ? '正在运行（目录读取受限）' : '未安装');
     const pid = connector.pid ?? connector.qqPids?.[0] ?? null;
     const webuiUrl = connector.webuiUrl || '';
     const paths = connector.paths || {};
@@ -1027,7 +1032,7 @@ async function loadSnowlumaPage({ quiet = false } = {}) {
         <h2>QQ 连接（macOS NapCat）</h2>
         <div class="snowluma-state-row">
           <span class="dot ${installed && patched ? 'dot-on' : 'dot-off'}"></span>
-          <span>NapCat：<strong>${installed ? (patched ? '已安装并已切换入口' : '已安装，尚未切换 QQ 入口') : '未安装'}</strong></span>
+          <span>NapCat：<strong>${napcatStateText}</strong></span>
           ${connector.napcatVersion ? `<span class="muted">v${esc(connector.napcatVersion)}</span>` : ''}
         </div>
         <div class="snowluma-state-row">

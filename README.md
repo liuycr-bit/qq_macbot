@@ -1,7 +1,7 @@
 # QQ Agent Mac
 
 ![平台](https://img.shields.io/badge/platform-macOS%20Apple%20Silicon-lightgrey)
-![阶段](https://img.shields.io/badge/status-Phase%201-yellow)
+![阶段](https://img.shields.io/badge/status-Phase%202-orange)
 ![协议](https://img.shields.io/badge/protocol-OneBot%20v11-blue)
 ![许可](https://img.shields.io/badge/license-MIT-green)
 
@@ -9,7 +9,7 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 
 本仓库计划在 Apple Silicon Mac 上运行 QQ Agent 的 Electron 控制台和机器人核心，并通过**独立安装的 NapCat**连接 macOS QQ。QQ Agent 与 NapCat 之间使用 OneBot v11 正向 WebSocket 接收事件、使用 HTTP API 调用动作；模型侧继续兼容 OpenAI 风格的 API。
 
-> 当前仓库处于第一阶段：已完成移植设计和基础代码改造，尚未完成真实 QQ 登录、消息收发、完整测试、应用构建、签名或发布验收。本文不会把“已有代码”表述成“已经实机验证可用”。
+> 当前仓库处于第二阶段：已完成 NapCat 本机安装、QQ 入口切换、真实账号登录、OneBot 双端口启用，以及 QQ Agent 对登录信息的读取。尚未发送测试消息，也未完成完整测试、应用构建、签名或发布验收。本文不会把“协议连接成功”表述成“消息机器人已经验收可用”。
 
 ## 当前进度
 
@@ -24,8 +24,10 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 | 本地隐私边界 | 已完成 | 上游遥测、更新检查和社区上传在本机移植版中默认关闭 |
 | 外部 OneBot 模式 | 已保留 | 可填写自定义 WebSocket、HTTP 地址和访问令牌 |
 | Apple Silicon 构建配置 | 已写入 | 提供 arm64 `.app`、DMG 和 ZIP 构建命令，但本阶段未执行构建 |
-| NapCat 本机安装 | 未执行 | 本仓库不自动安装、不注入 NapCat，也不修改 `QQ.app` |
-| QQ 登录与真实消息链路 | 未验证 | 留待第二阶段使用真实账号和 NapCat 配置联调 |
+| NapCat 本机安装 | 已完成 | 已通过官方 Mac 安装器安装 NapCat 4.18.28，并将 QQ 入口切换为 NapCat |
+| QQ 登录与协议连接 | 已完成 | QQ 已登录；WebSocket 3001、HTTP 3000 可达；QQ Agent 已读取登录信息 |
+| 真实消息收发 | 未执行 | 尚未向群聊或私聊发送测试消息，不作消息链路验收结论 |
+| macOS 权限受限适配 | 已完成 | QQ 沙盒目录不可读时不再误报未安装，可使用手动令牌完成本机连接 |
 | 移植后的完整测试 | 未执行 | 上游测试脚本仍在，但不能据此声称当前移植版测试通过 |
 | 签名、公证和正式分发 | 未实施 | 当前构建配置默认无签名，仅面向本机开发 |
 
@@ -60,7 +62,7 @@ QQ Agent Mac
 - **敏感数据不入库**：真实 API Key、QQ 登录态、聊天存档和长期记忆不得提交到 Git。
 - **外部服务默认关闭**：原上游遥测、更新检查、意见和金句上传不会在本机版中自动访问，只有用户在设置中明确开启后才启用。
 
-## 第一阶段的移植改动
+## 当前移植改动
 
 本仓库相对上游基线主要完成了以下改动：
 
@@ -71,10 +73,12 @@ QQ Agent Mac
 - 调整 Electron 的 macOS 数据目录、托盘图标、硬件加速和启动行为。
 - 增加 Apple Silicon 的本机构建配置，以及第一阶段设计和 macOS 部署文档。
 - 增加只读的本机联调体检，并将非必要的上游在线服务改为默认关闭。
+- 适配 macOS App 数据保护：区分目录不存在与读取受限，并允许用 QQ 入口和 OneBot 双端口作为运行证据。
+- 修正 QQ 进程检测可能出现无效 PID `0` 的问题。
 
 ## 继承的上游能力
 
-以下能力来自直接上游 `K0nd1us/QQ-agent`，相关代码仍保留在本仓库中，但**尚未针对本次 macOS 移植完成回归验证**：
+以下能力来自直接上游 `K0nd1us/QQ-agent`，相关代码仍保留在本仓库中，但**尚未针对本次 macOS 移植完成完整回归验证**：
 
 - 群聊、私聊消息接入和响应策略。
 - OpenAI 兼容模型配置、模型目录与成本记录。
@@ -101,7 +105,7 @@ QQ Agent Mac
 
 ## 开发运行
 
-以下命令是仓库中已经配置的开发入口，不代表本阶段已经完成运行验收：
+以下命令是仓库中已经配置并已在本机启动过的开发入口；启动成功不等于完整测试或发布验收：
 
 ```bash
 npm install
@@ -117,7 +121,7 @@ npm run pack:mac    # 构建未签名的 arm64 .app
 npm run dist:mac    # 构建未签名的 arm64 DMG 和 ZIP
 ```
 
-第一次真实联调还需要用户通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer) 安装 NapCat、切换 QQ 入口，并在 NapCat WebUI 中启用 OneBot v11 WebSocket 和 HTTP 服务。
+本机已经通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer) 完成安装和入口切换。其他机器首次部署时仍需执行该步骤，并在 NapCat WebUI 中启用 OneBot v11 WebSocket 和 HTTP 服务。若 macOS 阻止 QQ Agent 读取 QQ 沙盒目录，可在设置中手动填写 OneBot 令牌；这不影响本机协议连接。
 
 ## 源码来源与归属
 
@@ -134,6 +138,6 @@ npm run dist:mac    # 构建未签名的 arm64 DMG 和 ZIP
 
 ## 重要：Codex 移植开发声明
 
-> **本仓库当前的 macOS 第一阶段移植设计、基础代码改造、文档整理和 Git 提交由 OpenAI Codex 协助完成。**
+> **本仓库当前的 macOS 移植设计、本机适配开发、真实协议联调、文档整理和 Git 提交由 OpenAI Codex 协助完成。**
 >
 > Codex 的工作建立在上述开源项目和原作者成果之上，不改变原项目的作者归属、版权声明或第三方许可。当前内容仍处于开发阶段，实际运行效果应以之后的人工联调、测试和验收结果为准。

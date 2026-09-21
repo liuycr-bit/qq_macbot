@@ -23,11 +23,28 @@ function expandHome(value) {
   return raw;
 }
 
-function readJson(file) {
+function isPermissionError(error) {
+  return error?.code === 'EACCES' || error?.code === 'EPERM';
+}
+
+function readJsonResult(file) {
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return null;
+    return { data: JSON.parse(fs.readFileSync(file, 'utf8')), permissionDenied: false, errorCode: '' };
+  } catch (error) {
+    return { data: null, permissionDenied: isPermissionError(error), errorCode: String(error?.code || '') };
+  }
+}
+
+function readJson(file) {
+  return readJsonResult(file).data;
+}
+
+function probePath(file, mode = fs.constants.F_OK) {
+  try {
+    fs.accessSync(file, mode);
+    return { exists: true, permissionDenied: false, errorCode: '' };
+  } catch (error) {
+    return { exists: false, permissionDenied: isPermissionError(error), errorCode: String(error?.code || '') };
   }
 }
 
@@ -150,13 +167,13 @@ export class ConnectorManager {
     if (process.platform !== 'darwin') return [];
     try {
       const { stdout } = await execFileAsync('/usr/bin/pgrep', ['-x', 'QQ']);
-      return String(stdout).split(/\s+/).map(Number).filter(Number.isFinite);
+      return String(stdout).split(/\s+/).map(Number).filter((pid) => Number.isInteger(pid) && pid > 0);
     } catch {
       return [];
     }
   }
 
-  onebotConfigFiles() {
+  onebotConfigScan() {
     const p = this.paths();
     const dirs = [
       path.join(p.napcatRoot, 'config'),
@@ -165,6 +182,7 @@ export class ConnectorManager {
       p.napcatConfigDir
     ];
     const found = new Set();
+    const permissionDeniedPaths = [];
     for (const dir of dirs) {
       try {
         for (const name of fs.readdirSync(dir)) {
@@ -172,9 +190,19 @@ export class ConnectorManager {
             found.add(path.join(dir, name));
           }
         }
-      } catch { /* directory absent */ }
+      } catch (error) {
+        if (isPermissionError(error)) permissionDeniedPaths.push(dir);
+      }
     }
-    return [...found].sort();
+    return {
+      files: [...found].sort(),
+      permissionDenied: permissionDeniedPaths.length > 0,
+      permissionDeniedPaths
+    };
+  }
+
+  onebotConfigFiles() {
+    return this.onebotConfigScan().files;
   }
 
   readOneBotCandidates() {
@@ -207,22 +235,34 @@ export class ConnectorManager {
       path.join(p.napcatConfigDir, 'webui.json'),
       path.join(p.napcatRoot, 'config', 'webui.json')
     ];
+    const permissionDeniedPaths = [];
     for (const file of files) {
-      const data = readJson(file);
+      const result = readJsonResult(file);
+      if (result.permissionDenied) permissionDeniedPaths.push(file);
+      const data = result.data;
       if (!data) continue;
       const port = Number(data.port) || 6099;
       const token = String(data.token || '');
       const webuiUrl = `http://127.0.0.1:${port}/webui${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-      return { webuiUrl, webuiConfigFile: file };
+      return { webuiUrl, webuiConfigFile: file, webuiPermissionDenied: false, webuiPermissionDeniedPaths: [] };
     }
-    return { webuiUrl: '', webuiConfigFile: '' };
+    return {
+      // macOS 的 App 数据保护可能允许连接 6099，却拒绝读取 webui.json。
+      // 这种情况下仍提供本机入口，用户可使用已登录的浏览器会话访问。
+      webuiUrl: permissionDeniedPaths.length ? 'http://127.0.0.1:6099/webui' : '',
+      webuiConfigFile: '',
+      webuiPermissionDenied: permissionDeniedPaths.length > 0,
+      webuiPermissionDeniedPaths: permissionDeniedPaths
+    };
   }
 
   installationStatus() {
     const p = this.paths();
     const napcatPackageFile = path.join(p.napcatRoot, 'package.json');
-    const napcatPackage = readJson(napcatPackageFile);
+    const napcatPackageResult = readJsonResult(napcatPackageFile);
+    const napcatPackage = napcatPackageResult.data;
     const qqPackage = readJson(p.qqPackageFile);
+    const loaderProbe = probePath(p.napcatLoaderFile, fs.constants.R_OK);
     const main = String(qqPackage?.main || '');
     return {
       qqInstalled: fs.existsSync(p.qqExecutable),
@@ -235,9 +275,11 @@ export class ConnectorManager {
         }
       })(),
       napcatInstalled: !!napcatPackage,
+      napcatPermissionDenied: napcatPackageResult.permissionDenied || loaderProbe.permissionDenied,
+      napcatPermissionErrorCode: napcatPackageResult.errorCode || loaderProbe.errorCode,
       napcatVersion: String(napcatPackage?.version || ''),
       napcatPackageFile,
-      loaderInstalled: fs.existsSync(p.napcatLoaderFile),
+      loaderInstalled: loaderProbe.exists,
       entryPatched: main.includes('loadNapCat.js'),
       entryMain: main,
       entryBackupAvailable: fs.existsSync(p.qqPackageBackupFile),
@@ -255,7 +297,8 @@ export class ConnectorManager {
       isPortOpen(endpointHost(wsUrl), endpointPort(wsUrl, 3001)),
       isPortOpen(endpointHost(httpUrl), endpointPort(httpUrl, 3000))
     ]);
-    const onebotConfigFiles = this.onebotConfigFiles();
+    const onebotConfigScan = this.onebotConfigScan();
+    const onebotConfigFiles = onebotConfigScan.files;
     return {
       type: String(cfg.type || (process.platform === 'darwin' ? 'napcat-macos' : 'external-onebot')),
       platform: process.platform,
@@ -267,6 +310,8 @@ export class ConnectorManager {
       onebotHttpReady,
       onebotConfigCount: onebotConfigFiles.length,
       onebotConfigNames: onebotConfigFiles.map((file) => path.basename(file)),
+      onebotConfigPermissionDenied: onebotConfigScan.permissionDenied,
+      onebotConfigPermissionDeniedPaths: onebotConfigScan.permissionDeniedPaths,
       ...this.installationStatus(),
       ...this.readWebui(),
       paths: p
@@ -280,6 +325,10 @@ export class ConnectorManager {
   async diagnose() {
     const status = await this.status();
     const external = status.type === 'external-onebot';
+    const protocolReady = status.onebotReady && status.onebotHttpReady;
+    const sandboxReadRestricted = status.napcatPermissionDenied
+      || status.onebotConfigPermissionDenied
+      || status.webuiPermissionDenied;
     const checks = [];
     const add = (id, ok, label, detail, action = '', required = true) => {
       checks.push({ id, ok: !!ok, label, detail: String(detail || ''), action: String(action || ''), required });
@@ -297,13 +346,18 @@ export class ConnectorManager {
       add('architecture', process.arch === 'arm64', '处理器架构', process.arch, '当前打包配置优先支持 Apple Silicon（arm64）。', false);
       add('qq-app', status.qqInstalled, 'QQ.app', status.paths.qqAppPath, '请先安装 macOS QQ，或在设置中填写实际 QQ.app 路径。');
       add('qq-executable', status.qqExecutableReady, 'QQ 可执行文件', status.paths.qqExecutable, 'QQ.app 不完整或可执行权限异常，请重新安装 QQ。');
-      add('napcat-package', status.napcatInstalled, 'NapCat 程序', status.napcatInstalled ? `${status.napcatVersion || '版本未知'} · ${status.napcatPackageFile}` : status.paths.napcatRoot, '请使用官方 NapCat Mac Installer 安装 NapCat。');
-      add('napcat-loader', status.loaderInstalled, 'NapCat 加载器', status.paths.napcatLoaderFile, '请在官方安装器中重新安装或修复 NapCat。');
+      const napcatConfirmed = status.napcatInstalled || (status.entryPatched && protocolReady);
+      const loaderConfirmed = status.loaderInstalled || (status.entryPatched && protocolReady);
+      const restrictedDetail = 'QQ 沙盒目录受 macOS App 数据保护限制；已通过 QQ 入口和 OneBot 双端口确认 NapCat 正在运行';
+      add('napcat-package', napcatConfirmed, 'NapCat 程序', status.napcatInstalled ? `${status.napcatVersion || '版本未知'} · ${status.napcatPackageFile}` : (napcatConfirmed && sandboxReadRestricted ? restrictedDetail : status.paths.napcatRoot), '请使用官方 NapCat Mac Installer 安装 NapCat。');
+      add('napcat-loader', loaderConfirmed, 'NapCat 加载器', status.loaderInstalled ? status.paths.napcatLoaderFile : (loaderConfirmed && sandboxReadRestricted ? restrictedDetail : status.paths.napcatLoaderFile), '请在官方安装器中重新安装或修复 NapCat。');
       add('qq-entry', status.entryPatched, 'QQ 程序入口', status.entryMain || '未读取到 main 字段', '请在官方安装器中执行“切换程序入口 NapCat”。');
       add('qq-backup', status.entryBackupAvailable, 'QQ 入口备份', status.paths.qqPackageBackupFile, '建议使用官方安装器重新执行入口切换，确保可恢复原版 QQ。', false);
       add('qq-process', status.qqRunning, 'QQ / NapCat 进程', status.qqRunning ? `运行中（${status.qqPids.join(', ')}）` : '未运行', '完成安装和入口切换后，点击“启动 NapCat”。');
-      add('onebot-config', status.onebotConfigCount > 0, 'OneBot 配置', status.onebotConfigCount > 0 ? status.onebotConfigNames.join(', ') : '尚未生成账号配置', '请完成 QQ 登录，并在 NapCat WebUI 中启用 OneBot v11 WebSocket 与 HTTP 服务。');
-      add('webui-config', !!status.webuiConfigFile, 'NapCat WebUI 配置', status.webuiConfigFile || '尚未生成', '启动 NapCat 并完成首次登录后会自动生成。', false);
+      const configConfirmed = status.onebotConfigCount > 0 || (status.onebotConfigPermissionDenied && protocolReady);
+      add('onebot-config', configConfirmed, 'OneBot 配置', status.onebotConfigCount > 0 ? status.onebotConfigNames.join(', ') : (configConfirmed ? '目录读取受限；已通过 WebSocket 与 HTTP 端口确认配置生效' : '尚未生成账号配置'), '请完成 QQ 登录，并在 NapCat WebUI 中启用 OneBot v11 WebSocket 与 HTTP 服务。');
+      add('webui-config', !!status.webuiConfigFile || status.webuiPermissionDenied, 'NapCat WebUI 配置', status.webuiConfigFile || (status.webuiPermissionDenied ? '目录读取受限；可通过本机 6099 端口打开 WebUI' : '尚未生成'), '启动 NapCat 并完成首次登录后会自动生成。', false);
+      add('napcat-read-access', !sandboxReadRestricted, 'QQ 沙盒目录读取', sandboxReadRestricted ? '受 macOS App 数据保护限制；自动读取令牌不可用，当前使用设置中保存的本机令牌' : '可读取', '如需自动识别配置，可在系统设置中为 QQ Agent Mac 授予完全磁盘访问权限。', false);
     }
 
     add('onebot-ws', status.onebotReady, 'OneBot WebSocket', String(this.config().wsUrl || 'ws://127.0.0.1:3001'), '请在 NapCat WebUI 中启用 WebSocket 服务，并核对地址、端口和令牌。');
@@ -363,10 +417,10 @@ export class ConnectorManager {
     if (!status.qqInstalled) {
       return { ok: false, code: 'QQ_NOT_INSTALLED', error: `未找到 QQ：${status.paths.qqAppPath}` };
     }
-    if (!status.napcatInstalled) {
+    if (!status.napcatInstalled && !status.napcatPermissionDenied) {
       return { ok: false, code: 'NAPCAT_NOT_INSTALLED', error: '未检测到 NapCat。请先使用官方 Mac 安装器安装并切换 QQ 入口。', installerUrl: NAPCAT_INSTALLER_URL };
     }
-    if (!status.loaderInstalled) {
+    if (!status.loaderInstalled && !status.napcatPermissionDenied) {
       return { ok: false, code: 'NAPCAT_LOADER_MISSING', error: `未找到 NapCat 加载器：${status.paths.napcatLoaderFile}。请使用官方 Mac 安装器重新安装或修复。`, installerUrl: NAPCAT_INSTALLER_URL };
     }
     if (!status.entryPatched) {
