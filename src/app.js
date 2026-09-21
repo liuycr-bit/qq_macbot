@@ -22,6 +22,7 @@ import { importFromDsh, currentProviders, setProviderKey, testAllProviders, test
 import { scanModelsVision, visionResults, modelImageVerdict } from './vision-scan.js';
 import { builtinVisionResults } from './model-vision-docs.js';
 import { createEventBus, todayKey } from './util.js';
+import { createAdaptiveLookup } from './network-lookup.js';
 
 // 全局 fetch（undici）默认连接建立超时只有 10 秒，openrouter.ai 这类海外端点
 // 握手慢时会直接报 "Connect Timeout Error ... timeout: 10000ms"（注意这不是
@@ -29,7 +30,15 @@ import { createEventBus, todayKey } from './util.js';
 // 动态导入 + 容错：undici 与 Electron 内置 Node 不兼容时只退回默认超时，绝不崩主进程。
 try {
   const { Agent, setGlobalDispatcher } = await import('undici');
-  setGlobalDispatcher(new Agent({ connect: { timeout: 30_000 } }));
+  const fakeIpFallbackEnabled = process.env.QQ_AGENT_REAL_DNS_FALLBACK !== '0';
+  const lookup = createAdaptiveLookup({
+    // DeepSeek 在当前 macOS + Clash Fake-IP 环境中会在 TLS 前被重置。
+    // 只有系统实际返回 198.18.0.0/15 时才触发真实 DNS 回退。
+    hosts: fakeIpFallbackEnabled ? ['api.deepseek.com'] : [],
+    dohUrl: process.env.QQ_AGENT_DOH_URL || undefined,
+    log: (message) => console.warn(message)
+  });
+  setGlobalDispatcher(new Agent({ connect: { timeout: 30_000, lookup } }));
 } catch (error) {
   console.warn('[net] 全局连接超时设置失败（使用 undici 默认值 10s）:', error?.message ?? error);
 }

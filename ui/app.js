@@ -3859,20 +3859,6 @@ function bindSettingsEvents(c) {
 
   // ── 人设区块事件 ──
   const personaPick = $('#cfg-persona-pick');
-  function currentPersonaId() {
-    const roleText = $('#cfg-roletext')?.value ?? '';
-    const found = Object.entries(state.personaTemplates || {}).find(([, p]) => p.text === roleText);
-    return found ? found[0] : '';
-  }
-  function syncPersonaButtons() {
-    const id = currentPersonaId();
-    const tpl = state.personaTemplates[id];
-    const isCustom = id.startsWith('custom_');
-    const delBtn = $('#del-persona-btn');
-    if (delBtn) delBtn.classList.toggle('hidden', !isCustom);
-    const hint = $('#persona-pick-hint');
-    if (hint) hint.textContent = tpl ? (tpl.builtin ? '内置人设' : '自定义人设') : '';
-  }
   if (personaPick) {
     personaPick.addEventListener('click', () => openPersonaPicker());
   }
@@ -4050,6 +4036,22 @@ function openToolBreakdown() {
 }
 
 // ── 人设选择/添加 模态框 ──
+
+function currentPersonaId() {
+  const roleText = $('#cfg-roletext')?.value ?? '';
+  const found = Object.entries(state.personaTemplates || {}).find(([, p]) => p.text === roleText);
+  return found ? found[0] : '';
+}
+
+function syncPersonaButtons() {
+  const id = currentPersonaId();
+  const tpl = state.personaTemplates[id];
+  const isCustom = id.startsWith('custom_');
+  const delBtn = $('#del-persona-btn');
+  if (delBtn) delBtn.classList.toggle('hidden', !isCustom);
+  const hint = $('#persona-pick-hint');
+  if (hint) hint.textContent = tpl ? (tpl.builtin ? '内置人设' : '自定义人设') : '';
+}
 
 /** 选择人设：弹窗列出所有人设（含自定义），点击后填入角色设定文本框。 */
 function openPersonaPicker() {

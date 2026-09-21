@@ -205,6 +205,8 @@ npmmirror 是第三方镜像；有条件访问 npm 和 Electron 官方下载源�
 4. 打开“QQ 连接”页面。出现“OneBot 已连接”并能显示当前 QQ 昵称，表示进程、端口、鉴权和登录信息链路已经打通。
 5. macOS 可能允许 QQ Agent 连接本机端口，却阻止它读取 QQ 沙盒目录。此时页面会显示“目录读取受限”，但不会再误报 NapCat 未安装。手动保存两个 Token 即可正常连接；完全磁盘访问权限只影响自动识别，不是协议连接的必需条件。
 
+如果同时使用 Clash Fake-IP，且 DeepSeek 报“TLS connection was established 前连接断开”，QQ Agent 会在发现 `api.deepseek.com` 被解析到 `198.18.0.0/15` 时，通过 DNSPod DoH 获取真实地址后重试。图片安全下载遇到 Fake-IP 时也会先获取真实地址，再继续执行原有的内网地址拦截。该过程只查询域名，不传输模型 Key、提示词、聊天内容或图片，HTTPS 仍按原域名校验证书。模型请求的回退可通过 `QQ_AGENT_REAL_DNS_FALLBACK=0` 关闭；也可用 `QQ_AGENT_DOH_URL` 为模型和图片解析指定自己的 DoH JSON 接口。
+
 ### 6. 模型和消息权限
 
 OneBot 连接成功后，仍需在 QQ Agent 中配置模型 API、模型和聊天白名单。白名单与自动响应策略确认前，不要开启全量聊天响应。本仓库目前只完成登录信息读取，尚未向真实群聊或私聊发送测试消息。

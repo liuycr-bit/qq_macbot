@@ -14,6 +14,7 @@ import http from 'node:http';
 import https from 'node:https';
 import { StringDecoder } from 'node:string_decoder';
 import { getConfig } from './config.js';
+import { isFakeIpv4, resolveRealAddresses } from './network-lookup.js';
 
 const dnsLookup = dns.promises.lookup;
 
@@ -105,7 +106,17 @@ async function lookupWithTimeout(hostname) {
   const timeout = new Promise((_, reject) => {
     timer = setTimeout(() => reject(new Error('DNS 解析超时')), 5000);
   });
-  return Promise.race([dnsLookup(hostname, { all: true, verbatim: true }), timeout]).finally(() => clearTimeout(timer));
+  const addresses = await Promise.race([dnsLookup(hostname, { all: true, verbatim: true }), timeout])
+    .finally(() => clearTimeout(timer));
+  // Clash Fake-IP 不是目标站点的真实地址，不能直接按“内网 IP”放行，也不能
+  // 直接拒绝正常公网图片。通过 DoH 重新解析后，后续仍会逐个执行私网检查，
+  // 并把请求固定到校验过的真实 IP，因此不会削弱 DNS rebinding / SSRF 防护。
+  if (addresses.some(({ address }) => isFakeIpv4(address))) {
+    return resolveRealAddresses(hostname, {
+      dohUrl: process.env.QQ_AGENT_DOH_URL || undefined
+    });
+  }
+  return addresses;
 }
 
 async function resolveSafeHost(hostname, { allowPrivate = false } = {}) {
