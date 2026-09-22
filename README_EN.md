@@ -1,3 +1,9 @@
+# **Core Capabilities Available Now**
+
+## **1. Handle macOS QQ messaging through NapCat / OneBot and run the signed-in account as a QQ bot**
+
+## **2. Create and send memes locally with `#meme` commands, without invoking the LLM**
+
 <p align="right">
   <a href="README.md">简体中文</a> | <strong>English</strong>
 </p>

@@ -1,3 +1,9 @@
+# **目前已经实现的核心能力**
+
+## **1. 通过 NapCat / OneBot 接管 macOS QQ 的消息收发，让当前账号作为 QQ 机器人运行**
+
+## **2. 使用 `#meme` 命令在本地制作并直接发送表情包，无需调用大模型**
+
 <p align="right">
   <strong>简体中文</strong> | <a href="README_EN.md">English</a>
 </p>
