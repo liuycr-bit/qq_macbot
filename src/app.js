@@ -12,6 +12,7 @@ import { ChatStore } from './store.js';
 import { MemoryStore } from './memory.js';
 import { StickerManager } from './sticker-manager.js';
 import { SendQueue } from './sender.js';
+import { MemeGenerator } from './meme-generator.js';
 import { SessionRegistry } from './sessions.js';
 import { Orchestrator } from './orchestrator.js';
 import { listModels, chatCompletion, resolveApiKey, estimateCost, cacheHitRate } from './llm.js';
@@ -141,6 +142,7 @@ export function createApp({ log = console.log } = {}) {
     onebot, store,
     onSent: ({ chatKey, text }) => log(`[发送 -> ${chatKey}] ${String(text).slice(0, 60)}`)
   });
+  const meme = new MemeGenerator({ onebot, sender, log });
   const orchestrator = new Orchestrator({ store, memory, stickers, sender, sessions, onebot, emit });
   const connector = new ConnectorManager({ getConfig, emit, log });
 
@@ -305,7 +307,28 @@ export function createApp({ log = console.log } = {}) {
     }
 
     if (!text && !media.length) return;
-    store.appendIncoming(`${kind}:${id}`, {
+    const chatKey = `${kind}:${id}`;
+
+    // #meme 是确定性本地命令：留在消息存档里，但直接标成已读且对 Agent 隐藏。
+    // 这样即使同一群恰好还有一个等待中的大模型批次，表情命令也不会混入提示词。
+    if (meme.matches(event)) {
+      store.appendIncoming(chatKey, {
+        mid: event.message_id,
+        ts: event.time ? Math.round(Number(event.time) * 1000) : Date.now(),
+        senderId,
+        senderName,
+        text: text || commandTextFallback(event),
+        media,
+        read: true,
+        agentVisible: false
+      });
+      emit('chat-update', chatKey);
+      await meme.handle({ chatKey, kind, chatId: id, event, senderId });
+      emit('chat-update', chatKey);
+      return;
+    }
+
+    store.appendIncoming(chatKey, {
       mid: event.message_id,
       ts: event.time ? Math.round(Number(event.time) * 1000) : Date.now(),
       senderId,
@@ -313,8 +336,8 @@ export function createApp({ log = console.log } = {}) {
       text: text || '[图片]' ,
       media
     });
-    emit('chat-update', `${kind}:${id}`);
-    orchestrator.onIncoming(`${kind}:${id}`);
+    emit('chat-update', chatKey);
+    orchestrator.onIncoming(chatKey);
   }
 
   async function ingestPoke(event) {
@@ -1031,6 +1054,10 @@ export function createApp({ log = console.log } = {}) {
         return json(res, 200, { ok: true, config: sanitizeConfig(next) });
       }
 
+      if (pathname === '/api/meme/status' && method === 'GET') {
+        return json(res, 200, await meme.status());
+      }
+
       if (pathname === '/api/version' && method === 'GET') {
         // 纯本地读取，无网络依赖：设置页"当前版本"展示用
         return json(res, 200, { version: localVersion() });
@@ -1430,6 +1457,9 @@ export function createApp({ log = console.log } = {}) {
     }
     if (port == null) throw lastError ?? new Error('无法监听端口');
 
+    // 原生库初始化和资源下载在独立 Worker 中异步进行，不阻塞窗口与 OneBot 启动。
+    meme.start();
+
     // 本机移植版默认不向上游作者服务器发送匿名统计；只有用户显式开启才启动。
     if (getConfig().externalServices?.telemetryEnabled === true) startTelemetryLoop(log);
 
@@ -1459,12 +1489,20 @@ export function createApp({ log = console.log } = {}) {
 
   async function stop() {
     await orchestrator.abortAll();
+    await meme.stop();
     onebot.close();
     server.close();
     // 不随 QQ Agent 退出而关闭 QQ/NapCat：协议端与用户的正常 QQ 会话独立存在。
   }
 
-  return { server, onebot, store, memory, stickers, sender, sessions, orchestrator, connector, start, stop, emit, getConfig, updateConfig };
+  return { server, onebot, store, memory, stickers, meme, sender, sessions, orchestrator, connector, start, stop, emit, getConfig, updateConfig };
+}
+
+function commandTextFallback(event) {
+  if (Array.isArray(event?.message)) {
+    return event.message.filter((s) => s?.type === 'text').map((s) => String(s?.data?.text || '')).join('').trim();
+  }
+  return String(event?.raw_message ?? event?.message ?? '').trim();
 }
 
 /**

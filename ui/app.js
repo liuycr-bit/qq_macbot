@@ -3136,7 +3136,8 @@ const TIER_HINT = {
 };
 
 function renderChatSection(c) {
-    const st = c.store || {};
+  const st = c.store || {};
+  const meme = c.meme || {};
   // 滑条位置是唯一真相；档位与概率都由它派生（与后端 tier-slider.js 同一套规则）
   const sliderPos = sliderToTierUI_tierToSlider(st);
   const { tier: curTier, randomPercent: curPct } = sliderToTierUI(sliderPos);
@@ -3188,6 +3189,30 @@ return `
         这是"引导"不是"强制"，模型仍会自行判断什么时机合适。
       </div>
     </div>
+
+    <h3>表情生成命令</h3>
+    <div class="checkbox-row"><input type="checkbox" id="cfg-meme-enabled" ${meme.enabled !== false ? 'checked' : ''} />
+      <label for="cfg-meme-enabled">启用独立表情命令路由（命中后不唤醒大模型）</label></div>
+    <div class="field-row">
+      <div class="field"><label>命令前缀</label><input type="text" id="cfg-meme-prefix" value="${esc(meme.prefix || '#meme')}" /></div>
+      <div class="field"><label>同一用户冷却时间（秒）</label><input type="number" id="cfg-meme-cooldown" min="0" max="60" value="${esc(meme.cooldownSeconds ?? 3)}" /></div>
+      <div class="field"><label>单次生成超时（毫秒）</label><input type="number" id="cfg-meme-timeout" min="5000" max="120000" step="1000" value="${esc(meme.generationTimeoutMs ?? 30000)}" /></div>
+    </div>
+    <div class="checkbox-row"><input type="checkbox" id="cfg-meme-resource-check" ${meme.resourceCheckOnStart !== false ? 'checked' : ''} />
+      <label for="cfg-meme-resource-check">启动时在 Worker 内检查并补全模板资源</label></div>
+    <div class="checkbox-row"><input type="checkbox" id="cfg-meme-avatar-cache" ${meme.avatarCacheEnabled !== false ? 'checked' : ''} />
+      <label for="cfg-meme-avatar-cache">缓存 QQ 头像</label></div>
+    <div class="field-row">
+      <div class="field"><label>头像缓存有效期（小时）</label><input type="number" id="cfg-meme-avatar-hours" min="1" max="168" value="${esc(meme.avatarCacheExpireHours ?? 24)}" /></div>
+      <div class="field"><label>表情管理员 QQ（逗号分隔；群主/群管理员自动有权限）</label><input type="text" id="cfg-meme-admins" value="${esc((meme.adminQQs || []).join(','))}" /></div>
+    </div>
+    <div class="field"><label>禁用模板（每行一个 key）</label>
+      <textarea id="cfg-meme-disabled" rows="4" placeholder="例如：pornhub">${esc((meme.disabledTemplates || []).join('\n'))}</textarea></div>
+    <div class="field"><label>资源状态</label>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-small" id="meme-status-btn" type="button">刷新状态</button>
+        <span class="hint" id="meme-status-hint" style="margin:0">可在 QQ 中发送 ${esc(meme.prefix || '#meme')} 状态</span>
+      </div></div>
 
     <h3>响应档位</h3>
 
@@ -3346,6 +3371,20 @@ function bindSettingsEvents(c) {
       startListPoller();   // 刷新间隔可能刚被改过，用新值重启轮询
     } catch (e) {
       $('#cfg-save-result').textContent = `保存失败：${e.message}`;
+    }
+  });
+
+  $('#meme-status-btn')?.addEventListener('click', async () => {
+    const hint = $('#meme-status-hint');
+    if (hint) hint.textContent = '读取中…';
+    try {
+      const s = await api('/api/meme/status');
+      const stateNames = { checking: '检查资源中', ready: '就绪', partial: '资源不完整', error: '异常', stopped: '已停止', starting: '启动中' };
+      const images = s.resources?.images?.files || 0;
+      const fonts = s.resources?.fonts?.files || 0;
+      if (hint) hint.textContent = `${stateNames[s.state] || s.state || '未知'} · v${s.version || '-'} · ${s.templates || 0} 个模板 · 图片 ${images} / 字体 ${fonts} · 头像缓存 ${s.avatarCache?.files || 0}`;
+    } catch (error) {
+      if (hint) hint.textContent = `读取失败：${error.message}`;
     }
   });
 
@@ -4688,6 +4727,19 @@ async function saveConfig({ quiet = false } = {}) {
       encourage: Math.min(3, Math.max(0, Number(
         $('#cfg-sticker-encourage') ? $('#cfg-sticker-encourage').value : (c.sticker?.encourage ?? 1)
       ) || 0))
+    };
+    patch.meme = {
+      ...(c.meme || {}),
+      enabled: chk('#cfg-meme-enabled', c.meme?.enabled !== false),
+      prefix: val('#cfg-meme-prefix', c.meme?.prefix || '#meme').trim() || '#meme',
+      cooldownSeconds: clampInt(val('#cfg-meme-cooldown', c.meme?.cooldownSeconds), 0, 60, 3),
+      generationTimeoutMs: clampInt(val('#cfg-meme-timeout', c.meme?.generationTimeoutMs), 5000, 120000, 30000),
+      resourceCheckOnStart: chk('#cfg-meme-resource-check', c.meme?.resourceCheckOnStart !== false),
+      avatarCacheEnabled: chk('#cfg-meme-avatar-cache', c.meme?.avatarCacheEnabled !== false),
+      avatarCacheExpireHours: clampInt(val('#cfg-meme-avatar-hours', c.meme?.avatarCacheExpireHours), 1, 168, 24),
+      adminQQs: parseList(val('#cfg-meme-admins', (c.meme?.adminQQs || []).join(','))),
+      disabledTemplates: String($('#cfg-meme-disabled')?.value || '')
+        .split(/[,\n]/).map((x) => x.trim()).filter(Boolean)
     };
     // 读取历史档位（替代原来的「最多条数 + 字符预算」两个固定值）
     patch.store = {

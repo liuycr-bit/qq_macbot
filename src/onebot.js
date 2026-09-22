@@ -187,6 +187,25 @@ export class OneBotClient {
     return this.sendSegments(kind, id, segments);
   }
 
+  /** 发送内存中的生成图片。NapCat/OneBot v11 接受 base64:// 图片段。 */
+  async sendImage(kind, id, imageBuffer, { replyToMessageId = null, atUserId = null } = {}) {
+    const buffer = Buffer.isBuffer(imageBuffer) ? imageBuffer : Buffer.from(imageBuffer || []);
+    if (!buffer.length) throw new Error('图片内容为空');
+    const segments = [];
+    if (replyToMessageId !== undefined && replyToMessageId !== null && String(replyToMessageId).trim() !== '') {
+      const rid = String(replyToMessageId).trim();
+      if (!/^-?[1-9]\d*$/.test(rid)) throw new Error('replyToMessageId 必须是非零整数');
+      segments.push({ type: 'reply', data: { id: rid } });
+    }
+    if (atUserId !== undefined && atUserId !== null && String(atUserId).trim() !== '') {
+      const at = String(atUserId).trim();
+      if (!/^\d+$/.test(at)) throw new Error('atUserId 必须是正整数 QQ 号，且不能为 all');
+      segments.push({ type: 'at', data: { qq: at } });
+    }
+    segments.push({ type: 'image', data: { file: `base64://${buffer.toString('base64')}` } });
+    return this.sendSegments(kind, id, segments);
+  }
+
   async sendPoke(kind, id, targetUserId) {
     if (kind === 'private') {
       return this.call('friend_poke', { user_id: Number(id) }).catch(() =>

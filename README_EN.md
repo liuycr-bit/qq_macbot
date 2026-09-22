@@ -17,7 +17,7 @@ It runs the QQ Agent Electron console and bot core on Apple Silicon Macs and con
 
 ## Current Status
 
-Status updated on September 21, 2026.
+Status updated on September 22, 2026.
 
 | Item | Status | Details |
 |---|---|---|
@@ -34,11 +34,12 @@ Status updated on September 21, 2026.
 | Real message handling | Complete | Real QQ message receipt, sending, and bot replies were manually verified |
 | Custom personas | Complete | New local personas can be selected and applied at runtime; local test persona cards are not committed |
 | Image retrieval | Complete | Fake-IP addresses are resolved to public addresses before the existing private-network safety checks run |
+| Local meme extension | Complete | A deterministic `#meme` route, isolated Worker, QQ-avatar/message-image inputs, and 723 pinned-version templates are enabled locally |
 | Restricted macOS permissions | Complete | An unreadable QQ sandbox no longer produces a false “not installed” result; manual tokens can be used |
 | Full post-port test suite | Not run | Upstream test scripts remain, but their presence does not mean the port has passed the complete suite |
 | Apple signing and notarization | Not implemented | The release is unsigned and unnotarized; first launch may require right-clicking the app and choosing **Open** |
 
-See the [Phase 1 design](docs/PHASE1_DESIGN.md) and [macOS deployment notes](docs/MACOS_DEPLOYMENT.md) for the detailed design and deployment boundaries. These documents are currently in Chinese.
+See the [Phase 1 design](docs/PHASE1_DESIGN.md), [macOS deployment notes](docs/MACOS_DEPLOYMENT.md), and [local meme-generator extension guide](docs/MEME_EXTENSION.md) for detailed design, deployment, sources, and usage. These documents are currently in Chinese.
 
 ## Architecture
 
@@ -51,6 +52,7 @@ macOS QQ.app + NapCat
 QQ Agent Mac
 ├── ConnectorManager: QQ/NapCat discovery, lifecycle, configuration, and WebUI
 ├── OneBotClient: message events and action calls
+├── MemeGenerator: deterministic #meme routing, image inputs, and an isolated native Worker
 ├── Orchestrator: session orchestration and tool calls
 ├── Store / Memory: local message archive and long-term memory
 └── Electron + Web UI: desktop control console
@@ -82,6 +84,8 @@ Compared with the upstream baseline, this repository includes the following chan
 - Added read-only deployment diagnostics and disabled nonessential upstream online services by default.
 - Added support for macOS app-data protection by distinguishing missing directories from unreadable directories and accepting the QQ entry point plus both OneBot ports as runtime evidence.
 - Fixed QQ process detection returning an invalid PID of `0`.
+- Added a deterministic `#meme` route that bypasses the LLM, runs native generation in an isolated Worker, and reuses the existing OneBot send queue and rate limits.
+- Added an optional `meme-emoji` community template extension; the pinned local setup loads 723 templates and keeps third-party binaries, resources, and caches in the app-data directory.
 
 ## Inherited Upstream Features
 
@@ -220,7 +224,29 @@ After OneBot connects, configure a model API, a model, and the chat allow list i
 
 Core flows for model connectivity, real QQ message handling, custom persona activation, and image retrieval have been verified. This does not constitute full automated regression testing, multi-machine compatibility verification, Apple signing, or notarization.
 
-### 7. Restore Standard QQ
+### 7. Local Meme Generator
+
+Install the pinned native generator, community extension, fonts, and template resources from the project root:
+
+```bash
+npm run setup:meme
+```
+
+Commands use the `#meme` prefix and bypass the language model:
+
+```text
+#meme petpet @member
+#meme 摸头 123456789
+#meme 举牌 “hello”
+#meme list 举牌
+#meme status
+```
+
+The route supports QQ numbers, `@` mentions, images attached to the current message, and images from a replied-to message. Configuration for cooldowns, generation timeout, disabled templates, administrators, resource checks, and avatar caching is under **Settings → Chat Settings → Meme Commands**.
+
+The engine comes from [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs), with additional templates from [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji). See the [extension guide](docs/MEME_EXTENSION.md) for pinned versions, licenses, packaged-app installation, disk usage, complete usage, and troubleshooting.
+
+### 8. Restore Standard QQ
 
 To stop using NapCat, quit QQ first and switch the program entry point back to **QQ** in NapCat Mac Installer. Confirm that standard QQ starts normally before uninstalling NapCat or revoking installer permissions. Do not delete entry-point files manually, as doing so may prevent QQ from starting.
 
@@ -230,6 +256,7 @@ The following development and build entry points are configured in the repositor
 
 ```bash
 npm install
+npm run setup:meme # Install/update the local meme engine and extension resources
 npm start
 ```
 
@@ -237,6 +264,7 @@ Additional scripts:
 
 ```bash
 npm run server      # Headless server at http://127.0.0.1:3210 by default
+npm run setup:meme  # Install or repair the pinned meme engine and template extension
 npm test            # Run the retained upstream test collection
 npm run pack:mac    # Build an unsigned arm64 .app
 npm run dist:mac    # Build unsigned arm64 DMG and ZIP packages
@@ -257,6 +285,9 @@ This repository has the following source relationships:
 2. **Historical source identified by upstream:** [Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge). The `K0nd1us/QQ-agent` README identifies that project as its starting point; this macOS port was not started directly from that repository.
 3. **macOS protocol-component reference:** [NapNeko/NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer). Phase 1 used the paths and launch behavior from v1.6 / commit [`b4fd38f`](https://github.com/NapNeko/NapCat-Mac-Installer/commit/b4fd38faa7cccea1ce0be141cb26925c8f5f6338). NapCat and its installer are separate projects and are not distributed with this repository.
 4. **QQ client:** QQ is proprietary software provided by Tencent. It is not part of this repository and is not covered by this repository’s license.
+5. **Meme engine:** [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs), pinned to `v0.2.3`. Its CLI, Node binding, built-in templates, and resources remain independently licensed MIT third-party content.
+6. **Additional templates:** [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji), pinned to `v0.0.6+build.59`. Its repository identifies the code as MIT; image rights and usage boundaries remain subject to that project’s own notice.
+7. **Design reference:** [SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator). This implementation does not depend on AstrBot and does not copy that plugin’s source into this repository.
 
 See [UPSTREAM_CHECK.md](UPSTREAM_CHECK.md) for the upstream version-check record. The port retains the repository’s existing MIT license and copyright notices; see [LICENSE](LICENSE). Users must also comply with the licenses and terms governing QQ, NapCat, and other third-party dependencies.
 

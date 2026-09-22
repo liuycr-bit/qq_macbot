@@ -37,7 +37,7 @@ function err(message) {
 
 // 找不到消息 id 时，把当前会话真实可见的 id 告诉模型，避免它继续瞎猜。
 function midHint(ctx) {
-  const mids = ctx.store.recent(ctx.chatKey, { limit: 60 })
+  const mids = ctx.store.recent(ctx.chatKey, { limit: 60, includeAgentHidden: false })
     .map((m) => m.mid)
     .filter((v) => v !== null && v !== undefined && String(v) !== '');
   const uniq = [...new Set(mids.map(String))].slice(-8);
@@ -262,7 +262,7 @@ export function buildToolDefs() {
       async execute(ctx, args) {
         const limit = Math.min(100, Math.max(1, Number(args.limit) || 30));
         const offset = Math.max(0, Number(args.offset) || 0);
-        const messages = ctx.store.recent(ctx.chatKey, { limit, offset: offset + (ctx.session.pastStateCount || 0) });
+        const messages = ctx.store.recent(ctx.chatKey, { limit, offset: offset + (ctx.session.pastStateCount || 0), includeAgentHidden: false });
         return ok({
           count: messages.length,
           messages: messages.map((m) => ({

@@ -29,6 +29,10 @@
       "!progress.md",
       "!*.log"
     ],
+    "asarUnpack": [
+      "node_modules/@memecrafters/**/*",
+      "src/meme-worker.js"
+    ],
     "mac": {
       "target": [
         {
@@ -60,6 +64,7 @@
   "scripts": {
     "start": "electron .",
     "server": "node src/server.js",
+    "setup:meme": "node scripts/install-meme-extension.mjs",
     "pack:mac": "electron-builder --mac dir --arm64",
     "dist:mac": "electron-builder --mac dmg zip --arm64",
     "test": "node test/selftest.mjs && node test/render-test.mjs && node test/scroll-test.mjs && node test/usage-e2e.mjs",
@@ -69,6 +74,7 @@
     "test:usage": "node test/usage-e2e.mjs"
   },
   "dependencies": {
+    "@memecrafters/meme-generator": "0.2.3",
     "js-yaml": "^5.4.1",
     "undici": "^6.28.0",
     "ws": "^8.18.0"

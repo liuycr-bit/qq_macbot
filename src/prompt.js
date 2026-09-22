@@ -386,7 +386,7 @@ export function buildPastState(store, chatKey, { excludeIds = [], limit = null }
   const maxLimit = limit === null ? Math.max(1, Number(cfg.allCount) || 80) : Math.max(0, Number(limit) || 0);
   const exclude = new Set(excludeIds);
   if (maxLimit <= 0) return { text: '', count: 0, messages: [] };
-  let messages = store.recent(chatKey, { limit: maxLimit + exclude.size }).filter((m) => !exclude.has(m.id));
+  let messages = store.recent(chatKey, { limit: maxLimit + exclude.size, includeAgentHidden: false }).filter((m) => !exclude.has(m.id));
   // 屏蔽名单兜底过滤：屏蔽生效前已存档的历史消息，也不能再进提示词。
   // 入口拦截只管"新消息"，这里管"老库存"。机器人自己的发言（self）不过滤。
   const [pKind, pId] = String(chatKey || '').split(':');

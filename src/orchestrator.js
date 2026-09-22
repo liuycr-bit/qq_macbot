@@ -871,7 +871,7 @@ export class Orchestrator {
     const nameMsgCount = new Map();
     const nameToUserId = new Map();
     const uidToName = new Map();
-    for (const m of this.store.recent(chatKey, { limit: 2000 })) {
+    for (const m of this.store.recent(chatKey, { limit: 2000, includeAgentHidden: false })) {
       if (m.self || !m.senderId) continue;
       const uid = String(m.senderId);
       memberMsgCount.set(uid, (memberMsgCount.get(uid) || 0) + 1);
@@ -1026,7 +1026,7 @@ export class Orchestrator {
   #buildNewImpressionPrompt(chatKey, mem, stats) {
     const maxKeep = Number(getConfig().memory?.maxImpressionsPerMember) || 5;
     const uid = String(mem.userId || '');
-    const sample = (this.store.recent(chatKey, { limit: 2000 }) || [])
+    const sample = (this.store.recent(chatKey, { limit: 2000, includeAgentHidden: false }) || [])
       .filter((m) => !m.self && String(m.senderId) === uid)
       .slice(-40)
       .map((m) => String(m.text || '').slice(0, 200))

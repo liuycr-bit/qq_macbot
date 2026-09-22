@@ -78,7 +78,7 @@ export class ChatStore {
   }
 
   /** 追加一条收到的消息（未读）。返回写入的条目。 */
-  appendIncoming(chatKey, { mid, ts, senderId, senderName, text, reply = null, media = [] }) {
+  appendIncoming(chatKey, { mid, ts, senderId, senderName, text, reply = null, media = [], read = false, agentVisible = true }) {
     const st = this.#state(chatKey);
     const entry = {
       id: st.nextLocalId++,
@@ -88,7 +88,8 @@ export class ChatStore {
       senderName: String(senderName ?? ''),
       text: String(text ?? ''),
       self: false,
-      read: false,
+      read: read === true,
+      agentVisible: agentVisible !== false,
       reply: reply || null,
       media: Array.isArray(media) ? media : []
     };
@@ -159,9 +160,10 @@ export class ChatStore {
     return st.messages.filter((m) => !m.read && !m.self).slice(0, Math.max(1, Number(limit) || 3));
   }
 
-  recent(chatKey, { limit = 80, offset = 0, includeSelf = true } = {}) {
+  recent(chatKey, { limit = 80, offset = 0, includeSelf = true, includeAgentHidden = true } = {}) {
     const st = this.#state(chatKey);
-    const all = includeSelf ? st.messages : st.messages.filter((m) => !m.self);
+    let all = includeSelf ? st.messages : st.messages.filter((m) => !m.self);
+    if (!includeAgentHidden) all = all.filter((m) => m.agentVisible !== false);
     // offset = 跳过最近 N 条（用于工具翻页）。只读，绝不能修改 st.messages！
     const start = Math.max(0, all.length - Math.max(0, Number(offset) || 0));
     return all.slice(0, start).slice(-Math.max(1, Number(limit) || 1));

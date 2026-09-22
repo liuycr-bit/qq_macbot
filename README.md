@@ -17,7 +17,7 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 
 ## 当前进度
 
-状态更新于 2026-09-21。
+状态更新于 2026-09-22。
 
 | 项目 | 状态 | 说明 |
 |---|---|---|
@@ -34,11 +34,12 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 | 真实消息收发 | 已完成 | 用户已在真实 QQ 环境完成人工联调并确认收发和机器人响应正常 |
 | 自定义人设 | 已完成 | 新增本地人设可被选择并在运行时生效；本地测试角色卡不提交到仓库 |
 | 图片获取 | 已完成 | Fake-IP 环境下先解析真实公网地址，再执行原有内网地址安全拦截；本机人工测试正常 |
+| 本地表情扩展 | 已完成 | `#meme` 独立路由、Worker 隔离、QQ 头像/消息图片输入和 723 个固定版本模板已在本机启用 |
 | macOS 权限受限适配 | 已完成 | QQ 沙盒目录不可读时不再误报未安装，可使用手动令牌完成本机连接 |
 | 移植后的完整测试 | 未执行 | 上游测试脚本仍在，但不能据此声称当前移植版测试通过 |
 | Apple 签名和公证 | 未实施 | 当前发布包未签名、未公证，首次打开可能需要右键选择“打开” |
 
-详细设计见 [第一阶段设计](docs/PHASE1_DESIGN.md)，部署边界和后续联调步骤见 [macOS 部署说明](docs/MACOS_DEPLOYMENT.md)。
+详细设计见 [第一阶段设计](docs/PHASE1_DESIGN.md)，部署边界和后续联调步骤见 [macOS 部署说明](docs/MACOS_DEPLOYMENT.md)，表情能力的来源、安装和完整命令见 [本地表情生成扩展](docs/MEME_EXTENSION.md)。
 
 ## 架构
 
@@ -51,6 +52,7 @@ macOS QQ.app + NapCat
 QQ Agent Mac
 ├── ConnectorManager：QQ/NapCat 探测、启停、配置同步、WebUI
 ├── OneBotClient：消息接收与动作调用
+├── MemeGenerator：#meme 独立路由、头像/图片输入与 Worker 原生生成
 ├── Orchestrator：会话编排与工具调用
 ├── Store / Memory：本地消息存档与长期记忆
 └── Electron + Web UI：本机图形控制台
@@ -82,6 +84,8 @@ QQ Agent Mac
 - 增加只读的本机联调体检，并将非必要的上游在线服务改为默认关闭。
 - 适配 macOS App 数据保护：区分目录不存在与读取受限，并允许用 QQ 入口和 OneBot 双端口作为运行证据。
 - 修正 QQ 进程检测可能出现无效 PID `0` 的问题。
+- 增加 `#meme` 确定性表情命令路由：命令不进入大模型，原生生成在独立 Worker 中运行，结果继续复用 OneBot 发送队列和限频。
+- 增加可选的 `meme-emoji` 社区模板扩展；固定版本在本机共加载 723 个模板，第三方程序和资源只写入应用数据目录。
 
 ## 继承的上游能力
 
@@ -220,7 +224,29 @@ OneBot 连接成功后，还需在 QQ Agent 中配置模型 API、模型和聊�
 
 已验证模型连通、真实 QQ 消息收发、自定义人设生效和图片获取的核心流程。该验证不等同于完整自动化回归、多机器兼容验证、Apple 签名或公证。
 
-### 7. 恢复原版 QQ
+### 7. 表情生成命令
+
+先在项目根目录安装固定版本的生成器、扩展库和模板资源：
+
+```bash
+npm run setup:meme
+```
+
+表情命令默认使用 `#meme` 前缀，并在消息入口直接处理，不会唤醒模型：
+
+```text
+#meme 摸头 @群友
+#meme 摸头 123456789
+#meme 举牌 "你好世界"
+#meme 列表 摸头
+#meme 状态
+```
+
+命令支持当前消息图片和引用消息图片。模板开关可由群主、群管理员或设置中指定的表情管理员通过 `#meme 禁用 <模板>`、`#meme 启用 <模板>` 管理。前缀、冷却、生成超时、模板禁用、资源检查和头像缓存位于“设置 → 聊天设置 → 表情生成命令”。资源与缓存写入开发版 `runtime/data/meme-generator/` 或打包版 Application Support 数据目录，不写入 `.app`。
+
+生成引擎来自 [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs)，额外模板来自 [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji)。它们是独立第三方项目；版本、许可、磁盘占用、打包版部署方法和故障排查见 [本地表情生成扩展](docs/MEME_EXTENSION.md)。
+
+### 8. 恢复原版 QQ
 
 需要停用 NapCat 时，先退出 QQ，再在 NapCat Mac Installer 中把程序入口切换回 **QQ**。确认原版 QQ 可以正常启动后，再决定是否卸载 NapCat 或撤销安装器权限。不要直接删除入口文件，否则可能导致 QQ 无法启动。
 
@@ -230,6 +256,7 @@ OneBot 连接成功后，还需在 QQ Agent 中配置模型 API、模型和聊�
 
 ```bash
 npm install
+npm run setup:meme # 安装/更新本地表情生成器与扩展资源
 npm start
 ```
 
@@ -257,6 +284,9 @@ NapCat 需通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-In
 2. **上游标注的历史来源**：[Derpyu520/qq-bridge](https://github.com/Derpyu520/qq-bridge)。该项目是 `K0nd1us/QQ-agent` README 中说明的改造起点；本次 macOS 移植并非直接从该仓库开始。
 3. **macOS 协议端参考**：[NapNeko/NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-Installer)，第一阶段按 v1.6 / 提交 [`b4fd38f`](https://github.com/NapNeko/NapCat-Mac-Installer/commit/b4fd38faa7cccea1ce0be141cb26925c8f5f6338) 的目录和启动方式设计。NapCat 及其安装器是独立项目，不随本仓库分发。
 4. **QQ 客户端**：由腾讯提供，是独立的闭源软件，不属于本仓库，也不受本仓库许可覆盖。
+5. **表情生成引擎**：[MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs)，本仓库固定使用 `v0.2.3`；其 CLI、Node 原生包、内置模板和资源是独立的 MIT 许可第三方内容。
+6. **扩展模板库**：[anyliew/meme-emoji](https://github.com/anyliew/meme-emoji)，本仓库安装脚本固定使用 `v0.0.6+build.59`；代码仓库标注 MIT，图片素材权利与用途边界以该项目自己的说明为准。
+7. **方案参考**：[SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator)。本仓库的实现不依赖 AstrBot，也未把该插件源码复制进来。
 
 上游版本检查记录见 [UPSTREAM_CHECK.md](UPSTREAM_CHECK.md)。移植代码沿用仓库现有 MIT 许可证和版权声明，详见 [LICENSE](LICENSE)。使用本项目时还应分别遵守 QQ、NapCat 及其他第三方依赖的许可和使用规则。
 

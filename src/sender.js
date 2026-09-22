@@ -134,6 +134,26 @@ export class SendQueue {
     });
   }
 
+  /** 发送一张本地生成图片；复用同一会话发送链、间隔与分钟/小时限频。 */
+  sendImage(chatKey, imageBuffer, options = {}) {
+    const [kind, id] = String(chatKey).split(':');
+    if (kind !== 'group' && kind !== 'private') throw new Error(`非法会话 key：${chatKey}`);
+    const chain = this.#chain(chatKey);
+    return chain(async () => {
+      this.#checkRate(chatKey);
+      await sleep(randInt(300, 900));
+      const data = await this.onebot.sendImage(kind, id, imageBuffer, {
+        replyToMessageId: options.replyToMessageId ?? null,
+        atUserId: options.atUserId ?? null
+      });
+      const ts = Date.now();
+      const label = String(options.label || '生成图片').slice(0, 100);
+      this.store.appendSelf(chatKey, { text: `[${label}]`, ts, mid: data?.message_id ?? null });
+      this.onSent?.({ chatKey, text: `[${label}]`, messageId: data?.message_id ?? null, image: true });
+      return { message_id: data?.message_id ?? null };
+    });
+  }
+
   /** 拍一拍。发送成功后留档（self 记录），否则下一次运行不知道自己拍过。 */
   poke(chatKey, targetUserId) {
     const [kind, id] = String(chatKey).split(':');

@@ -169,6 +169,20 @@ export const DEFAULT_CONFIG = {
     // 强制会显得机械，引导才能让它在合适的时候自然用上。
     encourage: 1
   },
+  // 确定性表情生成命令（不经过大模型）。
+  // 资源、原生库配置和头像缓存统一落在 DATA_DIR/meme-generator，打包后不会写入 .app。
+  meme: {
+    enabled: true,
+    prefix: '#meme',
+    cooldownSeconds: 3,
+    generationTimeoutMs: 30000,
+    resourceCheckOnStart: true,
+    disabledTemplates: [],
+    adminQQs: [],
+    avatarCacheEnabled: true,
+    avatarCacheExpireHours: 24,
+    maxInputImageBytes: 12582912
+  },
   // 存储
   store: {
     // 单群 JSON 最大保留条数。**0 = 不限制**。
