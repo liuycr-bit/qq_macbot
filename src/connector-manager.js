@@ -124,6 +124,7 @@ export class ConnectorManager {
     this.log = log;
     this.logs = [];
     this.process = null;
+    this.managedPids = new Set();
   }
 
   config() {
@@ -203,6 +204,14 @@ export class ConnectorManager {
 
   onebotConfigFiles() {
     return this.onebotConfigScan().files;
+  }
+
+  quickLoginAccount() {
+    for (const file of this.onebotConfigFiles()) {
+      const match = path.basename(file).match(/^onebot11_(\d+)\.json$/i);
+      if (match) return match[1];
+    }
+    return '';
   }
 
   readOneBotCandidates() {
@@ -397,6 +406,7 @@ export class ConnectorManager {
       if ((await this.qqPids()).length) throw error;
     }
     try { await execFileAsync('/usr/bin/killall', ['QQEXDOC']); } catch { /* optional helper */ }
+    this.managedPids.clear();
     await new Promise((resolve) => setTimeout(resolve, 800));
     return true;
   }
@@ -434,16 +444,30 @@ export class ConnectorManager {
       await this.terminateQQ();
     }
     const p = this.paths();
-    const child = spawn(p.qqExecutable, ['--no-sandbox'], {
-      cwd: path.dirname(p.qqExecutable),
-      stdio: ['ignore', 'pipe', 'pipe'],
-      detached: false,
-      env: { ...process.env }
-    });
-    this.attachProcess(child);
-    this.pushLog(`QQ/NapCat 启动中（pid=${child.pid}）。首次使用请在 QQ 窗口完成登录。`);
-    this.emit('connector-status', { running: true, pid: child.pid });
-    return { ok: true, launched: true, pid: child.pid };
+    // 通过 macOS LaunchServices 启动应用包。直接 spawn QQ.app 内部二进制既不会
+    // 正确激活 GUI 窗口，父进程退出时还可能令 NapCat 的输出管道触发 EPIPE。
+    // open 会把 QQ/NapCat 的生命周期交给系统管理，同时将登录窗口带到前台。
+    const account = this.quickLoginAccount();
+    const launchArgs = ['-n', p.qqAppPath, '--args', '--no-sandbox'];
+    if (account) launchArgs.push('-q', account);
+    await execFileAsync('/usr/bin/open', launchArgs);
+
+    let pids = [];
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      pids = await this.qqPids();
+      if (pids.length) break;
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+    if (!pids.length) {
+      return { ok: false, code: 'QQ_LAUNCH_FAILED', error: '已请求 macOS 启动 QQ/NapCat，但没有检测到 QQ 进程。' };
+    }
+    for (const pid of pids) this.managedPids.add(pid);
+    const pid = pids[0];
+    this.pushLog(account
+      ? `QQ/NapCat 已由 macOS 启动（pid=${pid}，快速登录账号=${account}）。`
+      : `QQ/NapCat 已由 macOS 启动（pid=${pid}）。首次使用请通过 NapCat WebUI 扫码登录。`);
+    this.emit('connector-status', { running: true, pid });
+    return { ok: true, launched: true, pid };
   }
 
   async stop({ force = false } = {}) {
