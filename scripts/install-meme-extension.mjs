@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
 /**
- * 将 meme-generator-rs CLI、meme-emoji 动态库和两者所需资源安装到
- * QQ Agent 的应用数据目录。第三方二进制和图片不会写入源码仓库或 .app。
+ * 将 meme-generator-rs CLI、meme-emoji、meme-generator-contrib-rs 动态库
+ * 及其资源安装到 QQ Agent 的应用数据目录。第三方二进制和图片不会写入
+ * 源码仓库或 .app。
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -18,6 +19,12 @@ const SCRIPT_DIR = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(SCRIPT_DIR, '..');
 const CORE_VERSION = '0.2.3';
 const COMMUNITY_VERSION = '0.0.6+build.59';
+const CONTRIB_COMMIT = '56583210f830a533009d68d35e84a4567583f761';
+const CONTRIB_RUST_TOOLCHAIN = '1.93.1';
+const CONTRIB_RESOURCE_KEYS = [
+  'behead', 'bite', 'can_can_need', 'do', 'empathy',
+  'fleshlight', 'jerk_off', 'lash', 'little_do', 'shoot'
+];
 
 const PLATFORM_ASSETS = {
   arm64: {
@@ -39,14 +46,15 @@ function printHelp() {
 
 选项：
   --data-dir <目录>   QQ Agent 数据目录；默认 runtime/data
-  --builtin-only      只安装官方内置模板，不安装 meme-emoji 扩展
+  --builtin-only      只安装官方内置模板，不安装任何外部模板库
+  --skip-contrib      安装 meme-emoji，但跳过 meme-generator-contrib-rs
   --help              显示帮助
 
 也可用 QQ_AGENT_DATA_DIR 环境变量指定数据目录。`);
 }
 
 function parseArgs(argv) {
-  const options = { dataDir: '', builtinOnly: false };
+  const options = { dataDir: '', builtinOnly: false, skipContrib: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--help' || arg === '-h') {
@@ -55,6 +63,10 @@ function parseArgs(argv) {
     }
     if (arg === '--builtin-only') {
       options.builtinOnly = true;
+      continue;
+    }
+    if (arg === '--skip-contrib') {
+      options.skipContrib = true;
       continue;
     }
     if (arg === '--data-dir') {
@@ -124,6 +136,91 @@ async function findFile(root, name) {
   return '';
 }
 
+async function resolveExecutable(name) {
+  const candidates = [
+    ...(process.env.PATH || '').split(path.delimiter).filter(Boolean).map((dir) => path.join(dir, name)),
+    path.join(os.homedir(), '.cargo', 'bin', name),
+    `/opt/homebrew/opt/rustup/bin/${name}`,
+    `/usr/local/opt/rustup/bin/${name}`
+  ];
+  for (const candidate of [...new Set(candidates)]) {
+    try {
+      await fsp.access(candidate, fs.constants.X_OK);
+      return candidate;
+    } catch { /* try next candidate */ }
+  }
+  return '';
+}
+
+async function installContrib({ tempDir, memeHome, librariesDir }) {
+  const target = process.arch === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin';
+  const destination = path.join(librariesDir, `meme-generator-contrib-macos-${process.arch}.dylib`);
+  const manifestFile = path.join(librariesDir, 'meme-generator-contrib.json');
+  const resourcesReady = (await Promise.all(CONTRIB_RESOURCE_KEYS.map(async (key) => {
+    try { return (await fsp.stat(path.join(memeHome, 'resources', 'images', key))).isDirectory(); }
+    catch { return false; }
+  }))).every(Boolean);
+  const manifest = await fsp.readFile(manifestFile, 'utf8').then(JSON.parse).catch(() => null);
+  const binaryReady = fs.existsSync(destination)
+    && Boolean(manifest?.sha256)
+    && await sha256(destination).then((actual) => actual === manifest.sha256).catch(() => false);
+  if (manifest?.commit === CONTRIB_COMMIT && manifest?.rustToolchain === CONTRIB_RUST_TOOLCHAIN
+      && manifest?.arch === process.arch && binaryReady && resourcesReady) {
+    console.log('meme-generator-contrib-rs 已是固定版本，跳过重复编译。');
+    return;
+  }
+
+  const rustup = await resolveExecutable('rustup');
+  if (!rustup) {
+    throw new Error([
+      '安装 meme-generator-contrib-rs 需要 rustup。',
+      '请先执行：brew install rustup',
+      '或使用 --skip-contrib 跳过该扩展。'
+    ].join('\n'));
+  }
+  const rustBinDir = path.dirname(rustup);
+  const cargo = fs.existsSync(path.join(rustBinDir, 'cargo'))
+    ? path.join(rustBinDir, 'cargo')
+    : await resolveExecutable('cargo');
+  if (!cargo) throw new Error('已找到 rustup，但没有找到 cargo');
+
+  console.log(`准备 Rust ${CONTRIB_RUST_TOOLCHAIN}（与 meme-generator-rs v${CORE_VERSION} ABI 一致）…`);
+  await run(rustup, ['toolchain', 'install', CONTRIB_RUST_TOOLCHAIN, '--profile', 'minimal']);
+
+  const sourceDir = path.join(tempDir, 'meme-generator-contrib-rs');
+  await fsp.mkdir(sourceDir, { recursive: true });
+  await run('git', ['-C', sourceDir, 'init', '-q']);
+  await run('git', ['-C', sourceDir, 'remote', 'add', 'origin', 'https://github.com/MemeCrafters/meme-generator-contrib-rs.git']);
+  await run('git', ['-C', sourceDir, 'fetch', '--depth', '1', 'origin', CONTRIB_COMMIT]);
+  await run('git', ['-C', sourceDir, 'checkout', '--detach', 'FETCH_HEAD']);
+
+  console.log('从固定提交编译 meme-generator-contrib-rs…');
+  const buildEnv = {
+    ...process.env,
+    PATH: `${rustBinDir}${path.delimiter}${process.env.PATH || ''}`
+  };
+  await run(cargo, [`+${CONTRIB_RUST_TOOLCHAIN}`, 'build', '--release', '--target', target], {
+    cwd: sourceDir,
+    env: buildEnv
+  });
+  const builtLibrary = path.join(sourceDir, 'target', target, 'release', 'libmeme_generator_contrib.dylib');
+  if (!fs.existsSync(builtLibrary)) throw new Error('contrib 编译完成，但没有找到动态库');
+  await fsp.copyFile(builtLibrary, destination);
+  await fsp.chmod(destination, 0o755);
+  await fsp.mkdir(path.join(memeHome, 'resources'), { recursive: true });
+  await fsp.cp(path.join(sourceDir, 'resources', 'images'), path.join(memeHome, 'resources', 'images'), {
+    recursive: true,
+    force: true
+  });
+  await fsp.writeFile(manifestFile, `${JSON.stringify({
+    upstream: 'https://github.com/MemeCrafters/meme-generator-contrib-rs',
+    commit: CONTRIB_COMMIT,
+    rustToolchain: CONTRIB_RUST_TOOLCHAIN,
+    arch: process.arch,
+    sha256: await sha256(destination)
+  }, null, 2)}\n`, 'utf8');
+}
+
 function ensureMemeConfig(content) {
   const source = String(content || '').trim();
   if (!source) {
@@ -188,6 +285,22 @@ async function install() {
     await fsp.mkdir(path.dirname(cliDestination), { recursive: true });
     await fsp.mkdir(librariesDir, { recursive: true });
 
+    const memeEmojiDestination = path.join(librariesDir, `meme-emoji-macos-${process.arch}.dylib`);
+    const contribDestination = path.join(librariesDir, `meme-generator-contrib-macos-${process.arch}.dylib`);
+    const contribManifest = path.join(librariesDir, 'meme-generator-contrib.json');
+    if (options.builtinOnly) {
+      await Promise.all([
+        fsp.unlink(memeEmojiDestination).catch(() => {}),
+        fsp.unlink(contribDestination).catch(() => {}),
+        fsp.unlink(contribManifest).catch(() => {})
+      ]);
+    } else if (options.skipContrib) {
+      await Promise.all([
+        fsp.unlink(contribDestination).catch(() => {}),
+        fsp.unlink(contribManifest).catch(() => {})
+      ]);
+    }
+
     const coreUrl = `https://github.com/MemeCrafters/meme-generator-rs/releases/download/v${CORE_VERSION}/${asset.coreName}`;
     await download(coreUrl, cliZip, asset.coreSha256);
     await run('/usr/bin/unzip', ['-q', cliZip, '-d', cliExtract]);
@@ -203,7 +316,7 @@ async function install() {
       const encodedTag = encodeURIComponent(`v${COMMUNITY_VERSION}`);
       const extensionUrl = `https://github.com/anyliew/meme-emoji/releases/download/${encodedTag}/${asset.extensionName}`;
       await download(extensionUrl, extensionFile, asset.extensionSha256);
-      await fsp.copyFile(extensionFile, path.join(librariesDir, `meme-emoji-macos-${process.arch}.dylib`));
+      await fsp.copyFile(extensionFile, memeEmojiDestination);
 
       console.log('下载 meme-emoji 模板资源（体积较大，请耐心等待）…');
       const sourceDir = path.join(tempDir, 'meme-emoji');
@@ -217,6 +330,10 @@ async function install() {
         recursive: true,
         force: true
       });
+
+      if (!options.skipContrib) {
+        await installContrib({ tempDir, memeHome, librariesDir });
+      }
     }
 
     const env = { ...process.env, MEME_HOME: memeHome };

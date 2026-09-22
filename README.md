@@ -40,7 +40,7 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 | 真实消息收发 | 已完成 | 用户已在真实 QQ 环境完成人工联调并确认收发和机器人响应正常 |
 | 自定义人设 | 已完成 | 新增本地人设可被选择并在运行时生效；本地测试角色卡不提交到仓库 |
 | 图片获取 | 已完成 | Fake-IP 环境下先解析真实公网地址，再执行原有内网地址安全拦截；本机人工测试正常 |
-| 本地表情扩展 | 已完成 | `#meme` 独立路由、Worker 隔离、QQ 头像/消息图片输入和 723 个固定版本模板已在本机启用 |
+| 本地表情扩展 | 已完成 | `#meme` 独立路由、Worker 隔离、QQ 头像/消息图片输入和 733 个固定版本模板已在本机启用 |
 | macOS 权限受限适配 | 已完成 | QQ 沙盒目录不可读时不再误报未安装，可使用手动令牌完成本机连接 |
 | 移植后的完整测试 | 未执行 | 上游测试脚本仍在，但不能据此声称当前移植版测试通过 |
 | Apple 签名和公证 | 未实施 | 当前发布包未签名、未公证，首次打开可能需要右键选择“打开” |
@@ -91,7 +91,7 @@ QQ Agent Mac
 - 适配 macOS App 数据保护：区分目录不存在与读取受限，并允许用 QQ 入口和 OneBot 双端口作为运行证据。
 - 修正 QQ 进程检测可能出现无效 PID `0` 的问题。
 - 增加 `#meme` 确定性表情命令路由：命令不进入大模型，原生生成在独立 Worker 中运行，结果继续复用 OneBot 发送队列和限频。
-- 增加可选的 `meme-emoji` 社区模板扩展；固定版本在本机共加载 723 个模板，第三方程序和资源只写入应用数据目录。
+- 增加 `meme-emoji` 与官方 `meme-generator-contrib-rs` 额外模板库；固定版本在本机共加载 733 个模板，第三方程序和资源只写入应用数据目录。
 
 ## 继承的上游能力
 
@@ -235,6 +235,7 @@ OneBot 连接成功后，还需在 QQ Agent 中配置模型 API、模型和聊�
 先在项目根目录安装固定版本的生成器、扩展库和模板资源：
 
 ```bash
+brew install rustup
 npm run setup:meme
 ```
 
@@ -250,7 +251,7 @@ npm run setup:meme
 
 命令支持当前消息图片和引用消息图片。模板开关可由群主、群管理员或设置中指定的表情管理员通过 `#meme 禁用 <模板>`、`#meme 启用 <模板>` 管理。前缀、冷却、生成超时、模板禁用、资源检查和头像缓存位于“设置 → 聊天设置 → 表情生成命令”。资源与缓存写入开发版 `runtime/data/meme-generator/` 或打包版 Application Support 数据目录，不写入 `.app`。
 
-生成引擎来自 [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs)，额外模板来自 [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji)。它们是独立第三方项目；版本、许可、磁盘占用、打包版部署方法和故障排查见 [本地表情生成扩展](docs/MEME_EXTENSION.md)。
+生成引擎来自 [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs)，额外模板来自 [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji) 和 [MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs)。它们是独立第三方项目；版本、许可、内容边界、磁盘占用、打包版部署方法和故障排查见 [本地表情生成扩展](docs/MEME_EXTENSION.md)。
 
 ### 8. 恢复原版 QQ
 
@@ -262,6 +263,7 @@ npm run setup:meme
 
 ```bash
 npm install
+brew install rustup # 编译固定版本的官方 contrib 表情扩展
 npm run setup:meme # 安装/更新本地表情生成器与扩展资源
 npm start
 ```
@@ -292,7 +294,8 @@ NapCat 需通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-In
 4. **QQ 客户端**：由腾讯提供，是独立的闭源软件，不属于本仓库，也不受本仓库许可覆盖。
 5. **表情生成引擎**：[MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs)，本仓库固定使用 `v0.2.3`；其 CLI、Node 原生包、内置模板和资源是独立的 MIT 许可第三方内容。
 6. **扩展模板库**：[anyliew/meme-emoji](https://github.com/anyliew/meme-emoji)，本仓库安装脚本固定使用 `v0.0.6+build.59`；代码仓库标注 MIT，图片素材权利与用途边界以该项目自己的说明为准。
-7. **方案参考**：[SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator)。本仓库的实现不依赖 AstrBot，也未把该插件源码复制进来。
+7. **官方额外模板库**：[MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs)，固定使用提交 `5658321`；项目标注 MIT，并明确包含小众、实验性或可能引起不适的模板。
+8. **方案参考**：[SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator)。本仓库的实现不依赖 AstrBot，也未把该插件源码复制进来。
 
 上游版本检查记录见 [UPSTREAM_CHECK.md](UPSTREAM_CHECK.md)。移植代码沿用仓库现有 MIT 许可证和版权声明，详见 [LICENSE](LICENSE)。使用本项目时还应分别遵守 QQ、NapCat 及其他第三方依赖的许可和使用规则。
 

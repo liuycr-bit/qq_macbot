@@ -40,7 +40,7 @@ Status updated on September 22, 2026.
 | Real message handling | Complete | Real QQ message receipt, sending, and bot replies were manually verified |
 | Custom personas | Complete | New local personas can be selected and applied at runtime; local test persona cards are not committed |
 | Image retrieval | Complete | Fake-IP addresses are resolved to public addresses before the existing private-network safety checks run |
-| Local meme extension | Complete | A deterministic `#meme` route, isolated Worker, QQ-avatar/message-image inputs, and 723 pinned-version templates are enabled locally |
+| Local meme extension | Complete | A deterministic `#meme` route, isolated Worker, QQ-avatar/message-image inputs, and 733 pinned-version templates are enabled locally |
 | Restricted macOS permissions | Complete | An unreadable QQ sandbox no longer produces a false “not installed” result; manual tokens can be used |
 | Full post-port test suite | Not run | Upstream test scripts remain, but their presence does not mean the port has passed the complete suite |
 | Apple signing and notarization | Not implemented | The release is unsigned and unnotarized; first launch may require right-clicking the app and choosing **Open** |
@@ -91,7 +91,7 @@ Compared with the upstream baseline, this repository includes the following chan
 - Added support for macOS app-data protection by distinguishing missing directories from unreadable directories and accepting the QQ entry point plus both OneBot ports as runtime evidence.
 - Fixed QQ process detection returning an invalid PID of `0`.
 - Added a deterministic `#meme` route that bypasses the LLM, runs native generation in an isolated Worker, and reuses the existing OneBot send queue and rate limits.
-- Added an optional `meme-emoji` community template extension; the pinned local setup loads 723 templates and keeps third-party binaries, resources, and caches in the app-data directory.
+- Added `meme-emoji` and the official `meme-generator-contrib-rs` extra-template library; the pinned local setup loads 733 templates and keeps third-party binaries, resources, and caches in the app-data directory.
 
 ## Inherited Upstream Features
 
@@ -235,6 +235,7 @@ Core flows for model connectivity, real QQ message handling, custom persona acti
 Install the pinned native generator, community extension, fonts, and template resources from the project root:
 
 ```bash
+brew install rustup
 npm run setup:meme
 ```
 
@@ -250,7 +251,7 @@ Commands use the `#meme` prefix and bypass the language model:
 
 The route supports QQ numbers, `@` mentions, images attached to the current message, and images from a replied-to message. Configuration for cooldowns, generation timeout, disabled templates, administrators, resource checks, and avatar caching is under **Settings → Chat Settings → Meme Commands**.
 
-The engine comes from [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs), with additional templates from [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji). See the [extension guide](docs/MEME_EXTENSION.md) for pinned versions, licenses, packaged-app installation, disk usage, complete usage, and troubleshooting.
+The engine comes from [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs), with additional templates from [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji) and [MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs). See the [extension guide](docs/MEME_EXTENSION.md) for pinned versions, licenses, content boundaries, packaged-app installation, disk usage, complete usage, and troubleshooting.
 
 ### 8. Restore Standard QQ
 
@@ -262,6 +263,7 @@ The following development and build entry points are configured in the repositor
 
 ```bash
 npm install
+brew install rustup # Build the pinned official contrib meme extension
 npm run setup:meme # Install/update the local meme engine and extension resources
 npm start
 ```
@@ -293,7 +295,8 @@ This repository has the following source relationships:
 4. **QQ client:** QQ is proprietary software provided by Tencent. It is not part of this repository and is not covered by this repository’s license.
 5. **Meme engine:** [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs), pinned to `v0.2.3`. Its CLI, Node binding, built-in templates, and resources remain independently licensed MIT third-party content.
 6. **Additional templates:** [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji), pinned to `v0.0.6+build.59`. Its repository identifies the code as MIT; image rights and usage boundaries remain subject to that project’s own notice.
-7. **Design reference:** [SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator). This implementation does not depend on AstrBot and does not copy that plugin’s source into this repository.
+7. **Official extra templates:** [MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs), pinned to commit `5658321`. The project is MIT-licensed and explicitly contains niche, experimental, or potentially uncomfortable templates.
+8. **Design reference:** [SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator). This implementation does not depend on AstrBot and does not copy that plugin’s source into this repository.
 
 See [UPSTREAM_CHECK.md](UPSTREAM_CHECK.md) for the upstream version-check record. The port retains the repository’s existing MIT license and copyright notices; see [LICENSE](LICENSE). Users must also comply with the licenses and terms governing QQ, NapCat, and other third-party dependencies.
 

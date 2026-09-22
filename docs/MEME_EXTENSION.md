@@ -21,11 +21,12 @@ QQ Agent 消息入口
 | [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs) | 原生生成引擎、CLI、内置模板与资源 | `v0.2.3` | MIT；版权归原作者 |
 | [`@memecrafters/meme-generator`](https://www.npmjs.com/package/@memecrafters/meme-generator) | CLI 未安装时的 Node 原生回退 | `0.2.3` | 上述项目的 npm 发行包 |
 | [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji) | 额外模板动态库与图片资源 | `v0.0.6+build.59` | 代码仓库标注 MIT；图片素材来源与使用限制以该项目声明为准 |
+| [MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs) | 官方额外模板库，包含 10 个小众、实验性或可能引起不适的模板 | `5658321` | MIT；图片素材来自网络，权利边界以该项目声明为准 |
 | [SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator) | 需求与交互方案参考 | 不作为依赖 | 本实现不安装 AstrBot，也未复制该插件源码 |
 
-安装脚本只从上述项目的 GitHub Release 和版本标签下载内容，并对两个可执行产物执行固定 SHA-256 校验。第三方二进制、字体、模板图片和用户头像缓存均放在应用数据目录，不提交到本仓库、不写入 `.app`，也不受本仓库自身 MIT 许可重新授权。
+安装脚本从上述项目的 GitHub Release 和固定版本下载内容，对 Release 中的两个可执行产物执行固定 SHA-256 校验，并使用与主 CLI 相同的 Rust `1.93.1` 从固定提交编译 contrib 动态库。第三方二进制、字体、模板图片和用户头像缓存均放在应用数据目录，不提交到本仓库、不写入 `.app`，也不受本仓库自身 MIT 许可重新授权。
 
-按当前固定版本，本机加载结果为 **723 个模板**。上游版本、资源或模板键发生变化时，数量可能不同；以 `#meme 状态` 的实际结果为准。
+按当前固定版本，本机加载结果为 **733 个模板**。上游版本、资源或模板键发生变化时，数量可能不同；以 `#meme 状态` 的实际结果为准。
 
 ## 部署
 
@@ -33,8 +34,9 @@ QQ Agent 消息入口
 
 - macOS，支持 Apple Silicon（arm64）和 Intel（x64）；本项目正式构建配置当前以 arm64 为主。
 - Node.js `>= 20`、npm、Git。
+- 完整安装 contrib 模板需要 Homebrew `rustup`；执行 `brew install rustup` 即可，安装脚本会自动准备与主 CLI 匹配的 Rust `1.93.1`。
 - QQ、NapCat 和 OneBot v11 已按照主 README 配置完成。
-- 建议预留至少 1.5 GB 空闲空间。首次安装需要下载原生程序、字体和大量模板图片。
+- 建议预留至少 2 GB 空闲空间。首次安装需要下载原生程序、Rust 工具链、字体和大量模板图片。
 
 ### 开发模式
 
@@ -42,6 +44,7 @@ QQ Agent 消息入口
 
 ```bash
 npm install
+brew install rustup
 npm run setup:meme
 npm start
 ```
@@ -52,6 +55,7 @@ npm start
 runtime/data/meme-generator/
 ├── bin/meme
 ├── libraries/meme-emoji-macos-*.dylib
+├── libraries/meme-generator-contrib-macos-*.dylib
 ├── resources/fonts/
 ├── resources/images/
 ├── cache/avatars/
@@ -64,11 +68,18 @@ runtime/data/meme-generator/
 npm run setup:meme -- --builtin-only
 ```
 
+保留 `meme-emoji`、但不编译 contrib 的 10 个实验性模板时可执行：
+
+```bash
+npm run setup:meme -- --skip-contrib
+```
+
 ### 打包版数据目录
 
 打包应用使用 `~/Library/Application Support/QQ Agent Mac/data/`。从源码目录执行：
 
 ```bash
+brew install rustup
 node scripts/install-meme-extension.mjs \
   --data-dir "$HOME/Library/Application Support/QQ Agent Mac/data"
 ```
@@ -140,11 +151,13 @@ node scripts/install-meme-extension.mjs \
 - 头像缓存和有效期；
 - 表情管理员与禁用模板列表。
 
+`meme-generator-contrib-rs` 上游明确将其中的内容描述为小众、实验性或可能引起不适的表情。部署者可以先用 `#meme 列表` 查看，再通过禁用命令或设置页关闭不适合当前群聊的模板。
+
 ## 故障排查
 
-### `#meme 状态` 只有约 299 个模板
+### `#meme 状态` 的模板数少于 733
 
-这通常表示目前只加载了官方内置模板，社区动态库或图片资源没有安装。重新执行 `npm run setup:meme`，确认命令完成后重启 QQ Agent。
+约 299 个表示只加载了官方内置模板；约 723 个表示 `meme-emoji` 已加载、但 contrib 尚未加载。执行 `brew install rustup` 后重新运行 `npm run setup:meme`，确认命令完成并重启 QQ Agent。
 
 ### 提示“找不到唯一模板”
 
