@@ -3202,6 +3202,8 @@ return `
       <label for="cfg-meme-resource-check">启动时在 Worker 内检查并补全模板资源</label></div>
     <div class="checkbox-row"><input type="checkbox" id="cfg-meme-avatar-cache" ${meme.avatarCacheEnabled !== false ? 'checked' : ''} />
       <label for="cfg-meme-avatar-cache">缓存 QQ 头像</label></div>
+    <div class="checkbox-row"><input type="checkbox" id="cfg-meme-avatar-bridge" ${meme.avatarBridgeEnabled !== false ? 'checked' : ''} />
+      <label for="cfg-meme-avatar-bridge">优先通过 NapCat 已登录会话获取群成员头像</label></div>
     <div class="field-row">
       <div class="field"><label>头像缓存有效期（小时）</label><input type="number" id="cfg-meme-avatar-hours" min="1" max="168" value="${esc(meme.avatarCacheExpireHours ?? 24)}" /></div>
       <div class="field"><label>表情管理员 QQ（逗号分隔；群主/群管理员自动有权限）</label><input type="text" id="cfg-meme-admins" value="${esc((meme.adminQQs || []).join(','))}" /></div>
@@ -3382,7 +3384,8 @@ function bindSettingsEvents(c) {
       const stateNames = { checking: '检查资源中', ready: '就绪', partial: '资源不完整', error: '异常', stopped: '已停止', starting: '启动中' };
       const images = s.resources?.images?.files || 0;
       const fonts = s.resources?.fonts?.files || 0;
-      if (hint) hint.textContent = `${stateNames[s.state] || s.state || '未知'} · v${s.version || '-'} · ${s.templates || 0} 个模板 · 图片 ${images} / 字体 ${fonts} · 头像缓存 ${s.avatarCache?.files || 0}`;
+      const bridge = s.avatarBridge?.enabled === false ? '头像桥已关闭' : s.avatarBridge?.state === 'ready' ? '头像桥已连接' : s.avatarBridge?.state === 'error' ? '头像桥回退中' : '头像桥待首次使用';
+      if (hint) hint.textContent = `${stateNames[s.state] || s.state || '未知'} · v${s.version || '-'} · ${s.templates || 0} 个模板 · 图片 ${images} / 字体 ${fonts} · 头像缓存 ${s.avatarCache?.files || 0} · ${bridge}`;
     } catch (error) {
       if (hint) hint.textContent = `读取失败：${error.message}`;
     }
@@ -4736,6 +4739,7 @@ async function saveConfig({ quiet = false } = {}) {
       generationTimeoutMs: clampInt(val('#cfg-meme-timeout', c.meme?.generationTimeoutMs), 5000, 120000, 30000),
       resourceCheckOnStart: chk('#cfg-meme-resource-check', c.meme?.resourceCheckOnStart !== false),
       avatarCacheEnabled: chk('#cfg-meme-avatar-cache', c.meme?.avatarCacheEnabled !== false),
+      avatarBridgeEnabled: chk('#cfg-meme-avatar-bridge', c.meme?.avatarBridgeEnabled !== false),
       avatarCacheExpireHours: clampInt(val('#cfg-meme-avatar-hours', c.meme?.avatarCacheExpireHours), 1, 168, 24),
       adminQQs: parseList(val('#cfg-meme-admins', (c.meme?.adminQQs || []).join(','))),
       disabledTemplates: String($('#cfg-meme-disabled')?.value || '')

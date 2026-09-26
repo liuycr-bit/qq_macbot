@@ -1,0 +1,24 @@
+[package]
+name = "qq_agent_trending_memes"
+description = "Recent Chinese meme templates for QQ Agent Mac"
+version = "0.1.0"
+authors = ["QQ Agent Mac contributors"]
+license = "MIT"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+inventory = "0.3"
+serde = "1.0"
+skia-safe = { version = "0.93", features = ["textlayout"] }
+
+meme_generator_core = "0.0.5"
+meme_generator_utils = "0.0.9"
+
+[profile.release]
+strip = true
+opt-level = "z"
+lto = true
+codegen-units = 1

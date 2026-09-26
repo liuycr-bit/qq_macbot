@@ -22,11 +22,13 @@ QQ Agent 消息入口
 | [`@memecrafters/meme-generator`](https://www.npmjs.com/package/@memecrafters/meme-generator) | CLI 未安装时的 Node 原生回退 | `0.2.3` | 上述项目的 npm 发行包 |
 | [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji) | 额外模板动态库与图片资源 | `v0.0.6+build.59` | 代码仓库标注 MIT；图片素材来源与使用限制以该项目声明为准 |
 | [MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs) | 官方额外模板库，包含 10 个小众、实验性或可能引起不适的模板 | `5658321` | MIT；图片素材来自网络，权利边界以该项目声明为准 |
+| 本仓库 `qq-agent-trending-memes-rs` | 近期热梗模板包，提供背手负鼠、SBTI、牛来、旋转猫等 11 个模板 | `0.1.0` | 扩展代码随本仓库按 MIT 发布；背手负鼠图片来自 MIT 许可的 [claw16/codex-pet-beishoufushu](https://github.com/claw16/codex-pet-beishoufushu)，其余图片由代码绘制 |
+| [NapNeko/NapCatQQ](https://github.com/NapNeko/NapCatQQ) | 使用已登录 QQ 会话的 `NodeIKernelAvatarService` 下载群成员头像 | 本机 `4.18.28` | NapCat 本身按其仓库许可发布；本仓库只提供独立的本机头像桥接插件 |
 | [SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator) | 需求与交互方案参考 | 不作为依赖 | 本实现不安装 AstrBot，也未复制该插件源码 |
 
 安装脚本从上述项目的 GitHub Release 和固定版本下载内容，对 Release 中的两个可执行产物执行固定 SHA-256 校验，并使用与主 CLI 相同的 Rust `1.93.1` 从固定提交编译 contrib 动态库。第三方二进制、字体、模板图片和用户头像缓存均放在应用数据目录，不提交到本仓库、不写入 `.app`，也不受本仓库自身 MIT 许可重新授权。
 
-按当前固定版本，本机加载结果为 **733 个模板**。上游版本、资源或模板键发生变化时，数量可能不同；以 `#meme 状态` 的实际结果为准。
+按当前固定版本，本机加载结果为 **744 个模板**。上游版本、资源或模板键发生变化时，数量可能不同；以 `#meme 状态` 的实际结果为准。近期热梗、关键词别名和下一批 GitHub 候选来源见 [表情模板来源与待选清单](MEME_CANDIDATES.md)。
 
 ## 部署
 
@@ -46,8 +48,11 @@ QQ Agent 消息入口
 npm install
 brew install rustup
 npm run setup:meme
+npm run setup:avatar-bridge
 npm start
 ```
+
+`setup:avatar-bridge` 会把 `qq-avatar-bridge` 插件和随机生成的访问令牌复制到 NapCat 数据目录，启用插件，并在本机 NapCat 4.18.x 的插件白名单中加入该插件 ID。它不会修改 `QQ.app`。安装完成后需要重启 QQ/NapCat 和 QQ Agent；NapCat 更新覆盖 `napcat.mjs` 后重新执行一次即可。
 
 `setup:meme` 默认把内容安装到：
 
@@ -56,8 +61,10 @@ runtime/data/meme-generator/
 ├── bin/meme
 ├── libraries/meme-emoji-macos-*.dylib
 ├── libraries/meme-generator-contrib-macos-*.dylib
+├── libraries/qq-agent-trending-memes-macos-*.dylib
 ├── resources/fonts/
 ├── resources/images/
+├── resources/qq-agent-trending/back_hand_opossum/
 ├── cache/avatars/
 └── config.toml
 ```
@@ -116,7 +123,7 @@ node scripts/install-meme-extension.mjs \
 
 也可以在同一条消息中附图，或引用一条包含图片的消息后发送 `#meme 摸头`。输入图片按消息中的出现顺序传给模板，多余输入会按照模板允许的最大图片数截断。
 
-指定 QQ 号时会依次尝试多个 QQ 头像地址。已知的 40×40 企鹅占位图不会被采用或写入缓存；如果真实头像不可读取，命令会提示改用 `@群友`、附图或引用图片。
+指定 QQ 号或 `@群友` 时，QQ Agent 依次使用：新鲜本地缓存、NapCat 已登录 QQ 会话、公网 QQ 头像源、过期但仍有效的本地缓存。NapCat 头像桥只接受本机环回请求，并要求安装时生成的随机令牌；头像资源仍写入应用数据目录。已知的 40×40 企鹅和 120×120“暂时无法查看”等占位图不会被采用或写入缓存。
 
 ### 多段文字
 
@@ -155,9 +162,9 @@ node scripts/install-meme-extension.mjs \
 
 ## 故障排查
 
-### `#meme 状态` 的模板数少于 733
+### `#meme 状态` 的模板数少于 744
 
-约 299 个表示只加载了官方内置模板；约 723 个表示 `meme-emoji` 已加载、但 contrib 尚未加载。执行 `brew install rustup` 后重新运行 `npm run setup:meme`，确认命令完成并重启 QQ Agent。
+约 299 个表示只加载了官方内置模板；约 723 个表示 `meme-emoji` 已加载、但 contrib 和近期热梗包尚未全部加载；733 个表示只缺少近期热梗包。执行 `brew install rustup` 后重新运行 `npm run setup:meme`，确认命令完成并重启 QQ Agent。
 
 ### 提示“找不到唯一模板”
 
@@ -165,7 +172,7 @@ node scripts/install-meme-extension.mjs \
 
 ### 指定 QQ 号仍无法取得头像
 
-部分账号的真实头像可能受腾讯接口、账号状态或隐私设置影响。本扩展不会用企鹅占位图冒充结果；请改用 `@群友`、当前消息图片或引用图片。
+先执行 `npm run setup:avatar-bridge`，再重启 QQ/NapCat 与 QQ Agent。发送 `#meme 状态` 可查看“NapCat 头像桥”是否已连接。插件只监听本机访问，令牌保存在 NapCat 的 `config/plugins/qq-avatar-bridge/config.json`，不要提交或分享。账号已注销、被冻结，或 QQ 客户端本身也无法显示头像时仍可能失败；本扩展不会用企鹅占位图冒充结果，此时请使用当前消息图片或引用图片。
 
 ### 清理或卸载
 

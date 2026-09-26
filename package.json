@@ -65,6 +65,7 @@
     "start": "electron .",
     "server": "node src/server.js",
     "setup:meme": "node scripts/install-meme-extension.mjs",
+    "setup:avatar-bridge": "node scripts/install-avatar-bridge.mjs",
     "pack:mac": "electron-builder --mac dir --arm64",
     "dist:mac": "electron-builder --mac dmg zip --arm64",
     "test": "node test/selftest.mjs && node test/render-test.mjs && node test/scroll-test.mjs && node test/usage-e2e.mjs",

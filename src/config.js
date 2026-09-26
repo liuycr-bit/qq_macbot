@@ -181,6 +181,11 @@ export const DEFAULT_CONFIG = {
     adminQQs: [],
     avatarCacheEnabled: true,
     avatarCacheExpireHours: 24,
+    // 本机 NapCat 插件使用已登录 QQ 会话读取头像；令牌默认从 NapCat 插件配置读取。
+    avatarBridgeEnabled: true,
+    avatarBridgeUrl: 'http://127.0.0.1:6099/plugin/qq-avatar-bridge/api/avatar',
+    avatarBridgeToken: '',
+    avatarBridgeTimeoutMs: 6000,
     maxInputImageBytes: 12582912
   },
   // 存储

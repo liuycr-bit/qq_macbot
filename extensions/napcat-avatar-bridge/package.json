@@ -1,0 +1,9 @@
+{
+  "name": "qq-avatar-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "description": "Local-only authenticated avatar bridge for QQ Agent Mac",
+  "author": "QQ Agent Mac"
+}

@@ -21,6 +21,10 @@ const CORE_VERSION = '0.2.3';
 const COMMUNITY_VERSION = '0.0.6+build.59';
 const CONTRIB_COMMIT = '56583210f830a533009d68d35e84a4567583f761';
 const CONTRIB_RUST_TOOLCHAIN = '1.93.1';
+const TRENDING_PACK_VERSION = '0.1.0';
+const TRENDING_SOURCE_DIR = path.join(ROOT, 'extensions', 'qq-agent-trending-memes-rs');
+const OPOSSUM_SPRITESHEET_URL = 'https://raw.githubusercontent.com/claw16/codex-pet-beishoufushu/main/pet/spritesheet.webp';
+const OPOSSUM_SPRITESHEET_SHA256 = 'c4bddb584ac01ce9af5e8e8c85b5fb19ee6a602dd81e426a5566294aee70c622';
 const CONTRIB_RESOURCE_KEYS = [
   'behead', 'bite', 'can_can_need', 'do', 'empathy',
   'fleshlight', 'jerk_off', 'lash', 'little_do', 'shoot'
@@ -48,13 +52,15 @@ function printHelp() {
   --data-dir <目录>   QQ Agent 数据目录；默认 runtime/data
   --builtin-only      只安装官方内置模板，不安装任何外部模板库
   --skip-contrib      安装 meme-emoji，但跳过 meme-generator-contrib-rs
+  --skip-trending     跳过 QQ Agent 近期热梗模板包
+  --trending-only     仅更新近期热梗模板包，复用现有生成器和资源
   --help              显示帮助
 
 也可用 QQ_AGENT_DATA_DIR 环境变量指定数据目录。`);
 }
 
 function parseArgs(argv) {
-  const options = { dataDir: '', builtinOnly: false, skipContrib: false };
+  const options = { dataDir: '', builtinOnly: false, skipContrib: false, skipTrending: false, trendingOnly: false };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--help' || arg === '-h') {
@@ -67,6 +73,14 @@ function parseArgs(argv) {
     }
     if (arg === '--skip-contrib') {
       options.skipContrib = true;
+      continue;
+    }
+    if (arg === '--skip-trending') {
+      options.skipTrending = true;
+      continue;
+    }
+    if (arg === '--trending-only') {
+      options.trendingOnly = true;
       continue;
     }
     if (arg === '--data-dir') {
@@ -178,14 +192,13 @@ async function installContrib({ tempDir, memeHome, librariesDir }) {
       '或使用 --skip-contrib 跳过该扩展。'
     ].join('\n'));
   }
-  const rustBinDir = path.dirname(rustup);
-  const cargo = fs.existsSync(path.join(rustBinDir, 'cargo'))
-    ? path.join(rustBinDir, 'cargo')
-    : await resolveExecutable('cargo');
-  if (!cargo) throw new Error('已找到 rustup，但没有找到 cargo');
 
   console.log(`准备 Rust ${CONTRIB_RUST_TOOLCHAIN}（与 meme-generator-rs v${CORE_VERSION} ABI 一致）…`);
   await run(rustup, ['toolchain', 'install', CONTRIB_RUST_TOOLCHAIN, '--profile', 'minimal']);
+  const cargo = (await run(rustup, ['which', 'cargo', '--toolchain', CONTRIB_RUST_TOOLCHAIN], { capture: true })).stdout.trim();
+  const rustc = (await run(rustup, ['which', 'rustc', '--toolchain', CONTRIB_RUST_TOOLCHAIN], { capture: true })).stdout.trim();
+  if (!cargo || !rustc) throw new Error(`Rust ${CONTRIB_RUST_TOOLCHAIN} 中缺少 cargo 或 rustc`);
+  const rustBinDir = path.dirname(cargo);
 
   const sourceDir = path.join(tempDir, 'meme-generator-contrib-rs');
   await fsp.mkdir(sourceDir, { recursive: true });
@@ -197,9 +210,10 @@ async function installContrib({ tempDir, memeHome, librariesDir }) {
   console.log('从固定提交编译 meme-generator-contrib-rs…');
   const buildEnv = {
     ...process.env,
-    PATH: `${rustBinDir}${path.delimiter}${process.env.PATH || ''}`
+    PATH: `${rustBinDir}${path.delimiter}${process.env.PATH || ''}`,
+    RUSTC: rustc
   };
-  await run(cargo, [`+${CONTRIB_RUST_TOOLCHAIN}`, 'build', '--release', '--target', target], {
+  await run(cargo, ['build', '--release', '--target', target], {
     cwd: sourceDir,
     env: buildEnv
   });
@@ -218,6 +232,72 @@ async function installContrib({ tempDir, memeHome, librariesDir }) {
     rustToolchain: CONTRIB_RUST_TOOLCHAIN,
     arch: process.arch,
     sha256: await sha256(destination)
+  }, null, 2)}\n`, 'utf8');
+}
+
+async function installTrendingPack({ tempDir, memeHome, librariesDir }) {
+  const target = process.arch === 'arm64' ? 'aarch64-apple-darwin' : 'x86_64-apple-darwin';
+  const destination = path.join(librariesDir, `qq-agent-trending-memes-macos-${process.arch}.dylib`);
+  const manifestFile = path.join(librariesDir, 'qq-agent-trending-memes.json');
+  const resourceDir = path.join(memeHome, 'resources', 'images', 'back_hand_opossum');
+  const resourceFile = path.join(resourceDir, 'spritesheet.webp');
+  const manifest = await fsp.readFile(manifestFile, 'utf8').then(JSON.parse).catch(() => null);
+  const binaryReady = fs.existsSync(destination)
+    && Boolean(manifest?.sha256)
+    && await sha256(destination).then((actual) => actual === manifest.sha256).catch(() => false);
+  const resourceReady = fs.existsSync(resourceFile)
+    && await sha256(resourceFile).then((actual) => actual === OPOSSUM_SPRITESHEET_SHA256).catch(() => false);
+  if (manifest?.version === TRENDING_PACK_VERSION
+      && manifest?.rustToolchain === CONTRIB_RUST_TOOLCHAIN
+      && manifest?.arch === process.arch && binaryReady && resourceReady) {
+    console.log('QQ Agent 近期热梗模板包已是当前版本，跳过重复编译。');
+    return;
+  }
+
+  if (!fs.existsSync(path.join(TRENDING_SOURCE_DIR, 'Cargo.toml'))) {
+    throw new Error(`缺少近期热梗模板源码：${TRENDING_SOURCE_DIR}`);
+  }
+  const rustup = await resolveExecutable('rustup');
+  if (!rustup) throw new Error('安装近期热梗模板包需要 rustup，请先执行：brew install rustup');
+
+  console.log(`准备 Rust ${CONTRIB_RUST_TOOLCHAIN}（近期热梗模板包）…`);
+  await run(rustup, ['toolchain', 'install', CONTRIB_RUST_TOOLCHAIN, '--profile', 'minimal']);
+  const cargo = (await run(rustup, ['which', 'cargo', '--toolchain', CONTRIB_RUST_TOOLCHAIN], { capture: true })).stdout.trim();
+  const rustc = (await run(rustup, ['which', 'rustc', '--toolchain', CONTRIB_RUST_TOOLCHAIN], { capture: true })).stdout.trim();
+  if (!cargo || !rustc) throw new Error(`Rust ${CONTRIB_RUST_TOOLCHAIN} 中缺少 cargo 或 rustc`);
+  const rustBinDir = path.dirname(cargo);
+  const sourceDir = path.join(tempDir, 'qq-agent-trending-memes-rs');
+  await fsp.cp(TRENDING_SOURCE_DIR, sourceDir, { recursive: true, force: true });
+  const buildEnv = {
+    ...process.env,
+    PATH: `${rustBinDir}${path.delimiter}${process.env.PATH || ''}`,
+    RUSTC: rustc
+  };
+  await run(cargo, ['build', '--release', '--target', target], {
+    cwd: sourceDir,
+    env: buildEnv
+  });
+  const builtLibrary = path.join(sourceDir, 'target', target, 'release', 'libqq_agent_trending_memes.dylib');
+  if (!fs.existsSync(builtLibrary)) throw new Error('近期热梗模板编译完成，但没有找到动态库');
+  await fsp.copyFile(builtLibrary, destination);
+  await fsp.chmod(destination, 0o755);
+
+  const downloadedSprite = path.join(tempDir, 'back-hand-opossum-spritesheet.webp');
+  await download(OPOSSUM_SPRITESHEET_URL, downloadedSprite, OPOSSUM_SPRITESHEET_SHA256);
+  await fsp.mkdir(resourceDir, { recursive: true });
+  await fsp.copyFile(downloadedSprite, resourceFile);
+  await fsp.writeFile(manifestFile, `${JSON.stringify({
+    package: 'qq-agent-trending-memes-rs',
+    version: TRENDING_PACK_VERSION,
+    rustToolchain: CONTRIB_RUST_TOOLCHAIN,
+    arch: process.arch,
+    sha256: await sha256(destination),
+    resourceSources: [{
+      upstream: 'https://github.com/claw16/codex-pet-beishoufushu',
+      path: 'pet/spritesheet.webp',
+      sha256: OPOSSUM_SPRITESHEET_SHA256,
+      license: 'MIT'
+    }]
   }, null, 2)}\n`, 'utf8');
 }
 
@@ -285,19 +365,42 @@ async function install() {
     await fsp.mkdir(path.dirname(cliDestination), { recursive: true });
     await fsp.mkdir(librariesDir, { recursive: true });
 
+    if (options.trendingOnly) {
+      if (!fs.existsSync(cliDestination)) throw new Error('尚未安装基础生成器，不能使用 --trending-only');
+      await installTrendingPack({ tempDir, memeHome, librariesDir });
+      const env = { ...process.env, MEME_HOME: memeHome };
+      const { stdout } = await run(cliDestination, ['list'], { cwd: memeHome, env, capture: true });
+      const count = stdout.split(/\r?\n/).filter((line) => /^\s*\d+\.\s+/.test(line)).length;
+      console.log(`近期热梗模板安装完成：当前共加载 ${count} 个模板。请重启 QQ Agent。`);
+      return;
+    }
+
     const memeEmojiDestination = path.join(librariesDir, `meme-emoji-macos-${process.arch}.dylib`);
     const contribDestination = path.join(librariesDir, `meme-generator-contrib-macos-${process.arch}.dylib`);
     const contribManifest = path.join(librariesDir, 'meme-generator-contrib.json');
+    const trendingDestination = path.join(librariesDir, `qq-agent-trending-memes-macos-${process.arch}.dylib`);
+    const trendingManifest = path.join(librariesDir, 'qq-agent-trending-memes.json');
+    const trendingResources = path.join(memeHome, 'resources', 'images', 'back_hand_opossum');
     if (options.builtinOnly) {
       await Promise.all([
         fsp.unlink(memeEmojiDestination).catch(() => {}),
         fsp.unlink(contribDestination).catch(() => {}),
-        fsp.unlink(contribManifest).catch(() => {})
+        fsp.unlink(contribManifest).catch(() => {}),
+        fsp.unlink(trendingDestination).catch(() => {}),
+        fsp.unlink(trendingManifest).catch(() => {}),
+        fsp.rm(trendingResources, { recursive: true, force: true }).catch(() => {})
       ]);
     } else if (options.skipContrib) {
       await Promise.all([
         fsp.unlink(contribDestination).catch(() => {}),
         fsp.unlink(contribManifest).catch(() => {})
+      ]);
+    }
+    if (!options.builtinOnly && options.skipTrending) {
+      await Promise.all([
+        fsp.unlink(trendingDestination).catch(() => {}),
+        fsp.unlink(trendingManifest).catch(() => {}),
+        fsp.rm(trendingResources, { recursive: true, force: true }).catch(() => {})
       ]);
     }
 
@@ -333,6 +436,9 @@ async function install() {
 
       if (!options.skipContrib) {
         await installContrib({ tempDir, memeHome, librariesDir });
+      }
+      if (!options.skipTrending) {
+        await installTrendingPack({ tempDir, memeHome, librariesDir });
       }
     }
 

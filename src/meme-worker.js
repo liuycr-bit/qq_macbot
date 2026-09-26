@@ -27,6 +27,55 @@ let resourceState = 'idle';
 let resourceError = '';
 let initializedAt = 0;
 
+// QQ Agent 侧的热词别名。别名只改变命令解析，不复制模板或图片资源。
+// 目标始终使用稳定的英文模板键，便于继续复用禁用、缓存和生成流程。
+const MEME_ALIAS_ENTRIES = [
+  ['爱你老己', 'love_you'],
+  ['老己', 'love_you'],
+  ['老己辛苦了', 'love_you'],
+  ['别来沾边', 'dont_go_near'],
+  ['搞抽象', 'confuse'],
+  ['太抽象了', 'confuse'],
+  ['抽象', 'confuse'],
+  ['梁圣', 'deepseek_say'],
+  ['deepseek锐评', 'deepseek_say'],
+  ['让梁圣说', 'deepseek_say'],
+  ['摆烂', 'slacking_off'],
+  ['躺平', 'slacking_off'],
+  ['不干了', 'slacking_off'],
+  ['红温了', 'flush'],
+  ['汗流浃背了', 'flush'],
+  ['我勒个豆', 'peas'],
+  ['家人谁懂啊', 'family_know'],
+  ['被拿捏了', 'tease']
+];
+
+function normalizeQuery(value) {
+  return String(value || '').trim().toLowerCase().replace(/[，。！？!?、]+$/g, '');
+}
+
+const MEME_ALIASES = new Map(MEME_ALIAS_ENTRIES.map(([alias, key]) => [normalizeQuery(alias), key]));
+const ALIASES_BY_KEY = new Map();
+for (const [alias, key] of MEME_ALIAS_ENTRIES) {
+  if (!ALIASES_BY_KEY.has(key)) ALIASES_BY_KEY.set(key, []);
+  ALIASES_BY_KEY.get(key).push(alias);
+}
+
+function decorateInfo(info) {
+  if (!info) return info;
+  return {
+    ...info,
+    keywords: [...new Set([...(info.keywords || []), ...(ALIASES_BY_KEY.get(info.key) || [])])]
+  };
+}
+
+function infoMatchesQuery(info, query) {
+  const q = normalizeQuery(query);
+  if (!q) return true;
+  if (normalizeQuery(info.key).includes(q)) return true;
+  return (info.keywords || []).some((keyword) => normalizeQuery(keyword).includes(q));
+}
+
 function walkStats(dir) {
   const stats = { files: 0, bytes: 0 };
   const visit = (target) => {
@@ -59,7 +108,7 @@ function resourceStats() {
 function plainInfo(meme) {
   const info = meme.info;
   const tags = info?.tags instanceof Set ? [...info.tags] : Array.from(info?.tags || []);
-  return {
+  return decorateInfo({
     key: String(info?.key || meme.key || ''),
     keywords: Array.isArray(info?.keywords) ? info.keywords.map(String) : [],
     shortcuts: Array.isArray(info?.shortcuts)
@@ -78,7 +127,7 @@ function plainInfo(meme) {
       maxTexts: Number(info?.params?.maxTexts) || 0,
       defaultTexts: Array.isArray(info?.params?.defaultTexts) ? info.params.defaultTexts.map(String) : []
     }
-  };
+  });
 }
 
 function parseNumberRange(value) {
@@ -92,13 +141,13 @@ function parseCliList(output) {
   for (const line of String(output || '').split(/\r?\n/)) {
     const match = /^\s*\d+\.\s+([^\s]+)\s+\((.*)\)(?:\s+\[标签：(.*)\])?\s*$/.exec(line);
     if (!match) continue;
-    catalog.set(match[1], {
+    catalog.set(match[1], decorateInfo({
       key: match[1],
       keywords: match[2] ? match[2].split('/').map((item) => item.trim()).filter(Boolean) : [],
       shortcuts: [],
       tags: match[3] ? match[3].split('、').map((item) => item.trim()).filter(Boolean) : [],
       params: { minImages: 0, maxImages: 0, minTexts: 0, maxTexts: 0, defaultTexts: [] }
-    });
+    }));
   }
   return catalog;
 }
@@ -150,10 +199,12 @@ async function cliInfo(key) {
 }
 
 async function resolveCliMeme(query) {
-  const q = String(query || '').trim().toLowerCase();
+  const q = normalizeQuery(query);
   if (!q || !cliCatalog) return null;
+  const aliasedKey = MEME_ALIASES.get(q);
+  if (aliasedKey && cliCatalog.has(aliasedKey)) return cliInfo(aliasedKey);
   for (const info of cliCatalog.values()) {
-    if (info.key.toLowerCase() === q || info.keywords.some((keyword) => keyword.toLowerCase() === q)) {
+    if (normalizeQuery(info.key) === q || info.keywords.some((keyword) => normalizeQuery(keyword) === q)) {
       return cliInfo(info.key);
     }
   }
@@ -204,17 +255,17 @@ async function ensureLibrary() {
 }
 
 function resolveMeme(query) {
-  const q = String(query || '').trim().toLowerCase();
+  const q = normalizeQuery(query);
   if (!q) return null;
-  const direct = library.getMeme(q);
+  const direct = library.getMeme(MEME_ALIASES.get(q) || q);
   if (direct) return direct;
 
   const memes = library.getMemes();
   for (const meme of memes) {
     const info = plainInfo(meme);
-    if (info.key.toLowerCase() === q) return meme;
-    if (info.keywords.some((keyword) => keyword.trim().toLowerCase() === q)) return meme;
-    if (info.shortcuts.some((shortcut) => shortcut.names.some((name) => name.trim().toLowerCase() === q))) return meme;
+    if (normalizeQuery(info.key) === q) return meme;
+    if (info.keywords.some((keyword) => normalizeQuery(keyword) === q)) return meme;
+    if (info.shortcuts.some((shortcut) => shortcut.names.some((name) => normalizeQuery(name) === q))) return meme;
   }
 
   const matches = library.searchMemes(q, true) || [];
@@ -294,6 +345,8 @@ async function handle(type, payload = {}) {
     if (type === 'list') {
       const query = String(payload.query || '').trim();
       if (!query) return [...cliCatalog.values()];
+      const localMatches = [...cliCatalog.values()].filter((item) => infoMatchesQuery(item, query));
+      if (localMatches.length) return localMatches;
       const { stdout } = await runCli(['search', query], { timeout: 10000 });
       const keys = new Set(parseCliList(stdout).keys());
       return [...cliCatalog.values()].filter((item) => keys.has(item.key));
@@ -313,7 +366,8 @@ async function handle(type, payload = {}) {
     const query = String(payload.query || '').trim();
     let memes = library.getMemes();
     if (query) {
-      const keys = new Set((library.searchMemes(query, true) || []).map(String));
+      const localKeys = memes.map(plainInfo).filter((info) => infoMatchesQuery(info, query)).map((info) => info.key);
+      const keys = new Set([...localKeys, ...(library.searchMemes(query, true) || []).map(String)]);
       memes = memes.filter((meme) => keys.has(String(meme.key)));
     }
     return memes.map(plainInfo);

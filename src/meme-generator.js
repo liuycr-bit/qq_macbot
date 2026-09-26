@@ -2,6 +2,8 @@
 // 命中本路由的消息由 app.js 标成“已读且对 Agent 隐藏”，绝不会唤醒大模型。
 import fs from 'node:fs';
 import fsp from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import os from 'node:os';
 import path from 'node:path';
 import { Worker } from 'node:worker_threads';
 import { DATA_DIR, getConfig, updateConfig } from './config.js';
@@ -11,6 +13,12 @@ import { safeFetchBinary } from './safe-fetch.js';
 const MEME_HOME = path.join(DATA_DIR, 'meme-generator');
 const AVATAR_CACHE_DIR = path.join(MEME_HOME, 'cache', 'avatars');
 const QQ_RE = /^\d{5,12}$/;
+const KNOWN_QQ_AVATAR_PLACEHOLDERS = new Set([
+  // qlogo 的 40x40 JPEG 默认企鹅。
+  'd3b86c828178ce7a598e86eb74c8dc1b1c3948f9cbd01aece8eeb3915a7dcc06',
+  // Qzone 的 120x120“暂时无法查看”占位图。
+  '1b8214ac4449461450d94a808d42e658d6aaac13581554e6776a8e2b83d75125'
+]);
 
 function commandText(event) {
   if (Array.isArray(event?.message)) {
@@ -68,14 +76,32 @@ function extensionForMime(mime) {
 }
 
 function isDefaultQQAvatar(buffer) {
-  // qlogo 在账号头像不可直接读取时通常返回 40x40 的默认企鹅 PNG。
+  // qlogo/Qzone 在账号头像不可直接读取时会返回多种格式的占位图。
   // 不把该占位图写入缓存，否则后续即使换源也会一直复用错误头像。
-  if (!buffer || buffer.length < 24 || buffer.toString('ascii', 1, 4) !== 'PNG') return false;
+  if (!buffer || buffer.length < 24) return false;
+  const fingerprint = createHash('sha256').update(buffer).digest('hex');
+  if (KNOWN_QQ_AVATAR_PLACEHOLDERS.has(fingerprint)) return true;
+  if (buffer.toString('ascii', 1, 4) !== 'PNG') return false;
   try {
     return buffer.readUInt32BE(16) === 40 && buffer.readUInt32BE(20) === 40;
   } catch {
     return false;
   }
+}
+
+function isImageBuffer(buffer) {
+  if (!buffer || buffer.length < 12) return false;
+  if (buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return true;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true;
+  if (buffer.subarray(0, 3).toString('ascii') === 'GIF') return true;
+  return buffer.subarray(0, 4).toString('ascii') === 'RIFF' && buffer.subarray(8, 12).toString('ascii') === 'WEBP';
+}
+
+function expandHome(value) {
+  const raw = String(value || '').trim();
+  if (raw === '~') return os.homedir();
+  if (raw.startsWith('~/')) return path.join(os.homedir(), raw.slice(2));
+  return raw;
 }
 
 function readableBytes(bytes) {
@@ -229,6 +255,7 @@ export class MemeGenerator {
     this.log = log;
     this.worker = new MemeWorkerClient({ log });
     this.cooldowns = new Map();
+    this.avatarBridge = { state: 'unknown', lastError: '', lastSuccessAt: 0 };
   }
 
   start() {
@@ -256,6 +283,10 @@ export class MemeGenerator {
       prefix: this.prefix(),
       disabledTemplates: [...(getConfig().meme?.disabledTemplates || [])],
       avatarCache: cache,
+      avatarBridge: {
+        enabled: getConfig().meme?.avatarBridgeEnabled !== false,
+        ...this.avatarBridge
+      },
       dataDirectory: MEME_HOME
     };
   }
@@ -328,6 +359,7 @@ export class MemeGenerator {
       `生成器：${status.version || '加载中'}；模板 ${status.templates || 0} 个`,
       `资源：图片 ${images.files || 0} 个 / ${readableBytes(images.bytes)}，字体 ${fonts.files || 0} 个 / ${readableBytes(fonts.bytes)}`,
       `头像缓存：${status.avatarCache?.files || 0} 个 / ${readableBytes(status.avatarCache?.bytes)}`,
+      `NapCat 头像桥：${status.avatarBridge?.enabled === false ? '已关闭' : (status.avatarBridge?.state === 'ready' ? '已连接' : status.avatarBridge?.state === 'error' ? '暂不可用（自动使用公网回退）' : '等待首次使用')}`,
       `禁用模板：${status.disabledTemplates?.length || 0} 个`,
       status.error ? `错误：${status.error}` : ''
     ].filter(Boolean).join('\n');
@@ -377,7 +409,7 @@ export class MemeGenerator {
     }
   }
 
-  async #generate({ chatKey, event, senderId, templateQuery, args, replyToMessageId }) {
+  async #generate({ chatKey, kind, chatId, event, senderId, templateQuery, args, replyToMessageId }) {
     this.#checkCooldown(chatKey, senderId);
     await this.worker.ready();
     const info = await this.worker.request('resolve', { query: templateQuery }, 10000);
@@ -413,7 +445,7 @@ export class MemeGenerator {
       if (images.length >= maxImages) break;
       try {
         const image = source.type === 'avatar'
-          ? await this.#avatarImage(source.qq)
+          ? await this.#avatarImage(source.qq, { groupId: kind === 'group' ? chatId : '' })
           : await this.#mediaImage(source.media, images.length);
         if (image) images.push(image);
       } catch (error) {
@@ -423,7 +455,7 @@ export class MemeGenerator {
     if (images.length < info.params.minImages && QQ_RE.test(String(senderId))) {
       const already = new Set(sources.filter((s) => s.type === 'avatar').map((s) => String(s.qq)));
       if (!already.has(String(senderId))) {
-        try { images.push(await this.#avatarImage(String(senderId))); } catch { /* 最终由数量校验报错 */ }
+        try { images.push(await this.#avatarImage(String(senderId), { groupId: kind === 'group' ? chatId : '' })); } catch { /* 最终由数量校验报错 */ }
       }
     }
     if (images.length < info.params.minImages) {
@@ -513,23 +545,88 @@ export class MemeGenerator {
     return { name: `message-${index + 1}.${extensionForMime(mime)}`, data: buffer };
   }
 
-  async #avatarImage(qq) {
+  async #avatarBridgeToken() {
+    const cfg = getConfig();
+    const explicit = String(cfg.meme?.avatarBridgeToken || '').trim();
+    if (explicit) return explicit;
+    const napcatDataDir = expandHome(cfg.connector?.napcatDataDir)
+      || path.join(os.homedir(), 'Library', 'Containers', 'com.tencent.qq', 'Data', 'Library', 'Application Support', 'QQ', 'NapCat');
+    const configFile = path.join(napcatDataDir, 'config', 'plugins', 'qq-avatar-bridge', 'config.json');
+    try {
+      const parsed = JSON.parse(await fsp.readFile(configFile, 'utf8'));
+      return String(parsed?.token || '').trim();
+    } catch {
+      return '';
+    }
+  }
+
+  async #avatarFromBridge(qq, groupId = '') {
+    const cfg = getConfig().meme || {};
+    if (cfg.avatarBridgeEnabled === false) {
+      this.avatarBridge.state = 'disabled';
+      return null;
+    }
+    const rawUrl = String(cfg.avatarBridgeUrl || 'http://127.0.0.1:6099/plugin/qq-avatar-bridge/api/avatar').trim();
+    let url;
+    try { url = new URL(rawUrl); } catch { throw new Error('NapCat 头像桥地址无效'); }
+    if (url.protocol !== 'http:' || !['127.0.0.1', '::1', 'localhost'].includes(url.hostname)) {
+      throw new Error('NapCat 头像桥仅允许本机 HTTP 地址');
+    }
+    const token = await this.#avatarBridgeToken();
+    if (!token) throw new Error('NapCat 头像桥令牌不存在，请重新运行安装脚本');
+    const timeoutMs = Math.min(15000, Math.max(2000, Number(cfg.avatarBridgeTimeoutMs) || 6000));
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${token}`,
+        'content-type': 'application/json',
+        accept: 'image/*'
+      },
+      body: JSON.stringify({ uin: String(qq), group_id: String(groupId || '') }),
+      redirect: 'error',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(timeoutMs)
+    });
+    if (!response.ok) throw new Error(`NapCat 头像桥 HTTP ${response.status}`);
+    const announced = Number(response.headers.get('content-length')) || 0;
+    if (announced > 5 * 1024 * 1024) throw new Error('NapCat 头像超过大小限制');
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > 5 * 1024 * 1024 || !isImageBuffer(buffer) || isDefaultQQAvatar(buffer)) {
+      throw new Error('NapCat 头像桥没有返回有效头像');
+    }
+    this.avatarBridge = { state: 'ready', lastError: '', lastSuccessAt: Date.now() };
+    return { buffer, contentType: String(response.headers.get('content-type') || detectMime(buffer)).split(';')[0] };
+  }
+
+  async #avatarImage(qq, { groupId = '' } = {}) {
     const id = String(qq || '');
     if (!QQ_RE.test(id)) throw new Error(`QQ 号无效：${id}`);
     const cfg = getConfig().meme || {};
     const cacheEnabled = cfg.avatarCacheEnabled !== false;
     const maxAge = Math.min(168, Math.max(1, Number(cfg.avatarCacheExpireHours) || 24)) * 60 * 60 * 1000;
     const file = path.join(AVATAR_CACHE_DIR, `${id}.img`);
+    let staleCache = null;
     if (cacheEnabled) {
       try {
         const stat = await fsp.stat(file);
-        if (Date.now() - stat.mtimeMs < maxAge) {
-          const data = await fsp.readFile(file);
-          if (data.length && !isDefaultQQAvatar(data)) {
+        const data = await fsp.readFile(file);
+        if (data.length && isImageBuffer(data) && !isDefaultQQAvatar(data)) {
+          if (Date.now() - stat.mtimeMs < maxAge) {
             return { name: `qq-${id}.${extensionForMime(detectMime(data))}`, data };
           }
+          staleCache = data;
         }
       } catch { /* cache miss */ }
+    }
+    let selected = null;
+    try {
+      selected = await this.#avatarFromBridge(id, groupId);
+    } catch (error) {
+      this.avatarBridge = {
+        state: getConfig().meme?.avatarBridgeEnabled === false ? 'disabled' : 'error',
+        lastError: String(error?.message ?? error),
+        lastSuccessAt: this.avatarBridge.lastSuccessAt || 0
+      };
     }
     const urls = [
       // qlogo.cn/g 对部分账号只返回默认企鹅；Qzone 头像源通常仍能取到真实头像。
@@ -537,17 +634,18 @@ export class MemeGenerator {
       `https://q1.qlogo.cn/g?b=qq&nk=${encodeURIComponent(id)}&s=640`,
       `https://q4.qlogo.cn/headimg_dl?dst_uin=${encodeURIComponent(id)}&spec=640&img_type=jpg`
     ];
-    let selected = null;
-    for (const url of urls) {
+    for (const url of selected ? [] : urls) {
       try {
         const fetched = await safeFetchBinary(url, 5 * 1024 * 1024);
-        if (!fetched.buffer?.length || isDefaultQQAvatar(fetched.buffer)) continue;
+        if (!fetched.buffer?.length || !isImageBuffer(fetched.buffer) || isDefaultQQAvatar(fetched.buffer)) continue;
         selected = fetched;
         break;
       } catch { /* try next official QQ avatar source */ }
     }
+    if (!selected && staleCache) selected = { buffer: staleCache, contentType: detectMime(staleCache) };
     if (!selected) {
-      throw new Error(`QQ ${id} 的真实头像不可读取；请改用 @群友、附图或引用图片`);
+      const bridgeHint = this.avatarBridge.lastError ? `；NapCat 头像桥：${this.avatarBridge.lastError}` : '';
+      throw new Error(`QQ ${id} 的真实头像不可读取${bridgeHint}；请附图或引用图片`);
     }
     const { buffer, contentType } = selected;
     if (cacheEnabled) {
