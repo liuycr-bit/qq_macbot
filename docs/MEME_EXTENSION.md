@@ -90,6 +90,14 @@ npm run setup:meme -- --skip-contrib
 
 只更新本次选定的 B1/B2/B3/C1，可执行 `npm run setup:meme -- --expanded-only`；若明确不安装这四组，可在完整安装时追加 `--skip-expanded`。B2 模板键使用 `tudou_` 前缀，B3 使用 `gengtu_`，C1 使用 `classic_`；日常也可以直接用中文名或英文名搜索。原生 B1 模板保持上游键名。
 
+QQ Agent 另有一层独立的简体中文别名词库，覆盖 B3 全部模板以及 C1 中常见的经典、动物、游戏、动图、多格、反应和职场模板。中文别名会优先显示；上游英文名和模板键仍然保留。相同题材的分类版本会使用“动图版”“多格版”“职场版”等后缀，例如：
+
+```text
+#meme 改变我的想法 "这里填写观点"
+#meme 两个按钮 "选项一" "选项二"
+#meme 任务失败但成功了职场版 "构建失败" "居然能运行"
+```
+
 ### 打包版数据目录
 
 打包应用使用 `~/Library/Application Support/QQ Agent Mac/data/`。从源码目录执行：

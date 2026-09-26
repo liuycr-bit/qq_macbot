@@ -31,7 +31,8 @@
     ],
     "asarUnpack": [
       "node_modules/@memecrafters/**/*",
-      "src/meme-worker.js"
+      "src/meme-worker.js",
+      "src/meme-aliases.zh-CN.js"
     ],
     "mac": {
       "target": [

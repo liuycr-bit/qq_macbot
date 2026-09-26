@@ -40,7 +40,7 @@ Status updated on September 22, 2026.
 | Real message handling | Complete | Real QQ message receipt, sending, and bot replies were manually verified |
 | Custom personas | Complete | New local personas can be selected and applied at runtime; local test persona cards are not committed |
 | Image retrieval | Complete | Fake-IP addresses are resolved to public addresses before the existing private-network safety checks run |
-| Local meme extension | Complete | A deterministic `#meme` route, isolated Worker/subprocesses, authenticated NapCat avatar bridge, message-image inputs, trending-keyword aliases, and 1,544 pinned-version templates are enabled locally |
+| Local meme extension | Complete | A deterministic `#meme` route, isolated Worker/subprocesses, authenticated NapCat avatar bridge, message-image inputs, a Simplified Chinese alias layer, and 1,544 pinned-version templates are enabled locally |
 | Restricted macOS permissions | Complete | An unreadable QQ sandbox no longer produces a false “not installed” result; manual tokens can be used |
 | Full post-port test suite | Not run | Upstream test scripts remain, but their presence does not mean the port has passed the complete suite |
 | Apple signing and notarization | Not implemented | The release is unsigned and unnotarized; first launch may require right-clicking the app and choosing **Open** |
@@ -92,6 +92,7 @@ Compared with the upstream baseline, this repository includes the following chan
 - Fixed QQ process detection returning an invalid PID of `0`.
 - Added a deterministic `#meme` route that bypasses the LLM, runs native generation in an isolated Worker, and reuses the existing OneBot send queue and rate limits.
 - Added `meme-emoji`, the official `meme-generator-contrib-rs`, the QQ Agent trending pack, and the selected B1/B2/B3/C1 sources; the pinned local setup loads 1,544 templates and keeps third-party binaries, resources, and caches in the app-data directory.
+- Added a standalone Simplified Chinese alias layer for every B3 template and frequently used C1 classic, animal, gaming, animated, panel, reaction, and work templates while retaining upstream English keys as stable identifiers.
 - Added the local `qq-avatar-bridge` NapCat plugin. It retrieves group-member avatars through the signed-in QQ session first, retains the public QQ endpoints and stale cache as fallbacks, accepts loopback requests only, and requires a separate random token.
 
 ## Inherited Upstream Features

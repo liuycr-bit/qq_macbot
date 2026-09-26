@@ -8,6 +8,7 @@ import path from 'node:path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { parentPort, workerData } from 'node:worker_threads';
+import { chineseMemeTerms } from './meme-aliases.zh-CN.js';
 
 if (!parentPort) throw new Error('meme-worker 必须由 worker_threads 启动');
 
@@ -68,9 +69,15 @@ for (const [alias, key] of MEME_ALIAS_ENTRIES) {
 
 function decorateInfo(info) {
   if (!info) return info;
+  const localized = chineseMemeTerms(info.key);
   return {
     ...info,
-    keywords: [...new Set([...(info.keywords || []), ...(ALIASES_BY_KEY.get(info.key) || [])])]
+    keywords: [...new Set([
+      ...localized.aliases,
+      ...(info.keywords || []),
+      ...(ALIASES_BY_KEY.get(info.key) || [])
+    ])],
+    searchTerms: [...new Set([...(info.searchTerms || []), ...localized.searchTerms])]
   };
 }
 
@@ -78,7 +85,8 @@ function infoMatchesQuery(info, query) {
   const q = normalizeQuery(query);
   if (!q) return true;
   if (normalizeQuery(info.key).includes(q)) return true;
-  return (info.keywords || []).some((keyword) => normalizeQuery(keyword).includes(q));
+  return [...(info.keywords || []), ...(info.searchTerms || [])]
+    .some((keyword) => normalizeQuery(keyword).includes(q));
 }
 
 function walkStats(dir) {
