@@ -85,7 +85,7 @@ npm run setup:meme -- --builtin-only
 npm run setup:meme -- --skip-contrib
 ```
 
-只更新本次选定的 B1/B2，可执行 `npm run setup:meme -- --expanded-only`；若明确不安装这两组，可在完整安装时追加 `--skip-expanded`。B2 模板键使用 `tudou_` 前缀，也可以直接用上游自带的中文关键词搜索；原生 B1 模板保持上游键名。
+只更新本次选定的 B1/B2，可执行 `npm run setup:meme -- --expanded-only`；若明确不安装这两组，可在完整安装时追加 `--skip-expanded`。B2 的内部模板键仍使用 `tudou_` 前缀以兼容已有配置，但命令列表会显示 122 个唯一的“土豆＋中文名”，例如 `土豆骑猪`；输入上游原有的中文关键词（例如 `骑猪`）也仍然有效。原生 B1 模板保持上游键名。
 
 ### 打包版数据目录
 

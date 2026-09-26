@@ -54,6 +54,27 @@ const MEME_ALIAS_ENTRIES = [
   ['被拿捏了', 'tease']
 ];
 
+// tudou-meme 的内部键大多是拼音。运行时仍保留内部键以兼容禁用配置，
+// 但命令列表和日常输入统一暴露中文名称。少数上游没有纯中文名称的模板
+// 在这里补一个稳定名称；其余模板直接沿用上游的第一条中文关键词。
+const TUDOU_CHINESE_NAMES = new Map([
+  ['3p', '三人同框'],
+  ['dorochoumei', '多萝臭美'],
+  ['llq', '群啪'],
+  ['qushi', '去拉屎'],
+  ['huanyingchuo', '被戳欢迎新人']
+]);
+
+function tudouChineseName(item) {
+  const publicKey = String(item?.publicKey || item?.key || '');
+  const explicit = TUDOU_CHINESE_NAMES.get(publicKey);
+  if (explicit) return explicit;
+  const keywords = Array.isArray(item?.keywords) ? item.keywords.map(String) : [];
+  return keywords.find((keyword) => /\p{Script=Han}/u.test(keyword))
+    || String(item?.moduleDir || '').match(/\p{Script=Han}/u)?.input
+    || publicKey;
+}
+
 function normalizeQuery(value) {
   return String(value || '').trim().toLowerCase().replace(/[，。！？!?、]+$/g, '');
 }
@@ -201,10 +222,18 @@ async function refreshCombinedCatalog() {
     .then(JSON.parse).catch(() => null);
   for (const item of tudouManifest?.templates || []) {
     const publicKey = `tudou_${String(item.publicKey || item.key || '')}`;
+    const chineseName = tudouChineseName(item);
+    const displayName = `土豆${chineseName}`;
     addCatalogEntry({
       ...item,
       key: publicKey,
-      keywords: [...new Set([String(item.key || ''), ...(item.keywords || []).map(String)])],
+      displayName,
+      keywords: [...new Set([
+        displayName,
+        chineseName,
+        ...(item.keywords || []).map(String),
+        String(item.key || '')
+      ])],
       tags: [...new Set([...(item.tags || []).map(String), 'tudou-meme'])]
     }, {
       engine: 'tudou',

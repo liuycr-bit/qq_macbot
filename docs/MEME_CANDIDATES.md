@@ -96,7 +96,7 @@
 - 状态：**已接入**，固定提交 `016f46b`，使用独立 Python 子进程。
 - 许可：MIT；它也被 `MemeCrafters/meme-generator` 官方 README 列为“其他表情仓库”。
 - 规模：固定提交实际发现 **122 个可加载模块**；其中两个位于上游嵌套目录，两个模块共享 `huanying` 内部键，QQ Agent 为它们分配独立公开键并全部保留。
-- 适配：保留 Python 版 `meme-generator` 实现，由 Worker 启动独立子进程，不阻塞 QQ Agent 主进程；公开键统一使用 `tudou_` 前缀。
+- 适配：保留 Python 版 `meme-generator` 实现，由 Worker 启动独立子进程，不阻塞 QQ Agent 主进程；内部键继续使用 `tudou_` 前缀，命令列表统一显示“土豆＋中文名”，并保留不带前缀的中文关键词输入。
 - 内容：包含 NSFW、排泄物、性暗示和粗俗内容，以下不删减。
 
 <details>
