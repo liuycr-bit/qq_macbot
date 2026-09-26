@@ -357,7 +357,7 @@ export class MemeGenerator {
     return [
       `表情模块：${stateNames[status.state] || status.state || '未知'}`,
       `生成器：${status.version || '加载中'}；模板 ${status.templates || 0} 个`,
-      status.engines ? `模板来源：原生 ${status.engines.native || 0}，tudou ${status.engines.tudou || 0}，gengtu ${status.engines.gengtu || 0}，经典模板 ${status.engines.classic || 0}` : '',
+      status.engines ? `模板来源：原生 ${status.engines.native || 0}，tudou ${status.engines.tudou || 0}` : '',
       `资源：图片 ${images.files || 0} 个 / ${readableBytes(images.bytes)}，字体 ${fonts.files || 0} 个 / ${readableBytes(fonts.bytes)}`,
       `头像缓存：${status.avatarCache?.files || 0} 个 / ${readableBytes(status.avatarCache?.bytes)}`,
       `NapCat 头像桥：${status.avatarBridge?.enabled === false ? '已关闭' : (status.avatarBridge?.state === 'ready' ? '已连接' : status.avatarBridge?.state === 'error' ? '暂不可用（自动使用公网回退）' : '等待首次使用')}`,
@@ -371,7 +371,14 @@ export class MemeGenerator {
     const all = await this.worker.request('list', { query }, 10000);
     const disabled = new Set((getConfig().meme?.disabledTemplates || []).map(String));
     const list = all.filter((item) => !disabled.has(item.key));
-    const shown = list.slice(0, 60).map((item) => item.keywords[0] ? `${item.key}（${item.keywords[0]}）` : item.key);
+    const shown = list.slice(0, 60).map((item) => {
+      const label = item.keywords[0] ? `${item.key}（${item.keywords[0]}）` : item.key;
+      const minImages = Number(item.params?.minImages) || 0;
+      const maxImages = Number(item.params?.maxImages) || 0;
+      if (maxImages <= 0) return label;
+      const amount = minImages === maxImages ? String(maxImages) : `${minImages}-${maxImages}`;
+      return `${label}[图片${amount}]`;
+    });
     const suffix = list.length > shown.length ? `\n……另有 ${list.length - shown.length} 个，请加关键词搜索。` : '';
     await this.#sendText(chatKey, `${query ? `匹配“${query}”` : '可用模板'} ${list.length} 个：\n${shown.join('、') || '无'}${suffix}`, replyToMessageId);
   }
@@ -413,12 +420,6 @@ export class MemeGenerator {
   async #generate({ chatKey, kind, chatId, event, senderId, templateQuery, args, replyToMessageId }) {
     this.#checkCooldown(chatKey, senderId);
     await this.worker.ready();
-    const info = await this.worker.request('resolve', { query: templateQuery }, 10000);
-    if (!info) throw new Error(`找不到唯一模板：${templateQuery}（可用“${this.prefix()} 列表 ${templateQuery}”搜索）`);
-    if ((getConfig().meme?.disabledTemplates || []).map(String).includes(info.key)) {
-      throw new Error(`模板 ${info.key} 已被禁用`);
-    }
-
     const explicitQQs = [];
     const bareQQs = [];
     const textArgs = [];
@@ -431,6 +432,18 @@ export class MemeGenerator {
 
     const sources = await this.#segmentSources(event);
     for (const qq of explicitQQs) sources.push({ type: 'avatar', qq });
+    const info = await this.worker.request('resolve', {
+      query: templateQuery,
+      preferImages: sources.length > 0,
+      imageCount: sources.length
+    }, 10000);
+    if (!info) throw new Error(`找不到唯一模板：${templateQuery}（可用“${this.prefix()} 列表 ${templateQuery}”搜索）`);
+    if ((getConfig().meme?.disabledTemplates || []).map(String).includes(info.key)) {
+      throw new Error(`模板 ${info.key} 已被禁用`);
+    }
+    if (sources.length > 0 && info.params.maxImages <= 0) {
+      throw new Error(`模板 ${info.key} 是文字模板，不含头像槽位；@群友不会替换画面。请改用支持图片的模板，或发送“${this.prefix()} 列表 ${templateQuery}”查看其他版本`);
+    }
     // 纯数字只有在模板还需要图片时才解释为 QQ 号；纯文字模板里的数字仍作为文字。
     if (info.params.maxImages > 0) {
       const availableSlots = Math.max(0, info.params.maxImages - sources.length);

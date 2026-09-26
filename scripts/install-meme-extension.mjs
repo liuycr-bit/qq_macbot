@@ -30,10 +30,6 @@ const TUDOU_MEME_ARCHIVE_SHA256 = '239d98f6f071c1fb3203accb89ea22e519346c4ecc1c6
 const PYTHON_MEME_GENERATOR_VERSION = '0.1.14';
 const TUDOU_TEMPLATE_COUNT = 122;
 const TUDOU_RUNNER = path.join(ROOT, 'extensions', 'tudou-meme-python', 'runner.py');
-const GENGTU_COMMIT = 'cd17bfa02d9386c97a2bcf341f23a82fd1f8452c';
-const GENGTU_ARCHIVE_SHA256 = 'c8eafcb49637e20574d18651b4081bd46fbf0f7d6eb27553f2849c8c6951ae03';
-const CLASSIC_MEME_COMMIT = '0e8531e680951612f4bb1437ef767ea5f7ce8519';
-const CLASSIC_MEME_ARCHIVE_SHA256 = '3f37b57d361e4efb993021d6d444eef77485d11e5bc2c84a59573ded5a8c5847';
 const OPOSSUM_SPRITESHEET_URL = 'https://raw.githubusercontent.com/claw16/codex-pet-beishoufushu/main/pet/spritesheet.webp';
 const OPOSSUM_SPRITESHEET_SHA256 = 'c4bddb584ac01ce9af5e8e8c85b5fb19ee6a602dd81e426a5566294aee70c622';
 const CONTRIB_RESOURCE_KEYS = [
@@ -65,8 +61,8 @@ function printHelp() {
   --skip-contrib      安装 meme-emoji，但跳过 meme-generator-contrib-rs
   --skip-trending     跳过 QQ Agent 近期热梗模板包
   --trending-only     仅更新近期热梗模板包，复用现有生成器和资源
-  --skip-expanded     跳过 B1/B2/B3/C1 扩展模板包
-  --expanded-only     仅更新 B1/B2/B3/C1，复用现有生成器和资源
+  --skip-expanded     跳过 B1/B2 扩展模板包
+  --expanded-only     仅更新 B1/B2，复用现有生成器和资源
   --help              显示帮助
 
 也可用 QQ_AGENT_DATA_DIR 环境变量指定数据目录。`);
@@ -481,121 +477,9 @@ async function installTudouMeme({ tempDir, memeHome }) {
   return catalog.templates.length;
 }
 
-async function addGengtuPack(classicSource, gengtuSource) {
-  const packDir = path.join(classicSource, 'assets', 'templates', 'packs', 'gengtu');
-  const imagesDir = path.join(packDir, 'images');
-  await fsp.mkdir(imagesDir, { recursive: true });
-  await fsp.writeFile(path.join(packDir, 'pack.json'), `${JSON.stringify({
-    id: 'gengtu', name: 'Gengtu', tags: ['gengtu', '中文梗图']
-  }, null, 2)}\n`, 'utf8');
-
-  const sourceDir = path.join(gengtuSource, 'public', 'memes');
-  const configs = (await fsp.readdir(sourceDir)).filter((name) => name.endsWith('.json')).sort();
-  for (const configName of configs) {
-    const config = JSON.parse(await fsp.readFile(path.join(sourceDir, configName), 'utf8'));
-    const mediaName = path.basename(String(config.url || ''));
-    if (!mediaName || !fs.existsSync(path.join(sourceDir, mediaName))) {
-      throw new Error(`gengtu 模板缺少图片：${configName}`);
-    }
-    const base = path.basename(mediaName, path.extname(mediaName));
-    await fsp.copyFile(path.join(sourceDir, mediaName), path.join(imagesDir, mediaName));
-    const slots = (config.textFields || []).map((field, index) => {
-      const style = {
-        size: Number(field.fontSize) || 42,
-        color: String(field.color || '#000000'),
-        bold: Boolean(field.bold)
-      };
-      if (field.effect === 'outline' || field.effect === 'glow') {
-        style.stroke = String(field.outlineColor || '#ffffff');
-        style.strokeWidth = Math.max(1, Number(field.outlineWidth) || 2);
-      }
-      return {
-        name: `text${index + 1}`,
-        rect: [Number(field.x) || 0, Number(field.y) || 0, Number(field.width) || 1, Number(field.height) || 1],
-        hint: String(field.placeholder || `文字 ${index + 1}`),
-        align: ['left', 'right'].includes(field.align) ? field.align : 'center',
-        style
-      };
-    });
-    await fsp.writeFile(path.join(imagesDir, `${base}.meta.json`), `${JSON.stringify({
-      name: String(config.name || config.id || base),
-      tags: [String(config.id || base), ...(config.tags || []).map(String)],
-      category: 'gengtu',
-      slots,
-      source: {
-        url: `https://github.com/cholf5/gengtu/blob/${GENGTU_COMMIT}/public/memes/${encodeURIComponent(mediaName)}`,
-        license: 'MIT repository; template media rights follow upstream'
-      }
-    }, null, 2)}\n`, 'utf8');
-  }
-  return configs.length;
-}
-
-async function installClassicMemes({ tempDir, memeHome }) {
-  const engineDir = path.join(memeHome, 'engines', 'classic-memes');
-  const provenanceFile = path.join(engineDir, 'qq-agent-manifest.json');
-  const provenance = await fsp.readFile(provenanceFile, 'utf8').then(JSON.parse).catch(() => null);
-  if (provenance?.classicCommit === CLASSIC_MEME_COMMIT
-      && provenance?.gengtuCommit === GENGTU_COMMIT
-      && provenance?.templates === 642
-      && fs.existsSync(path.join(engineDir, 'dist', 'cli.js'))
-      && fs.existsSync(path.join(engineDir, 'assets', 'templates', 'manifest.json'))) {
-    console.log('C1 经典模板与 B3 gengtu 模板包已是固定版本，跳过重复构建。');
-    return provenance.templates;
-  }
-
-  const classicSource = await downloadArchive({
-    tempDir,
-    name: 'agent-meme-maker',
-    repository: 'kartikkabadi/meme-maker',
-    commit: CLASSIC_MEME_COMMIT,
-    sha256: CLASSIC_MEME_ARCHIVE_SHA256
-  });
-  const gengtuSource = await downloadArchive({
-    tempDir,
-    name: 'gengtu',
-    repository: 'cholf5/gengtu',
-    commit: GENGTU_COMMIT,
-    sha256: GENGTU_ARCHIVE_SHA256
-  });
-  const gengtuCount = await addGengtuPack(classicSource, gengtuSource);
-  console.log('构建 C1 本地渲染器并合并 B3 模板…');
-  await run('npm', ['ci', '--no-audit', '--no-fund'], { cwd: classicSource });
-  await run('npm', ['run', 'build:manifest'], { cwd: classicSource });
-  await run('npm', ['exec', 'tsc', '--', '-p', 'tsconfig.json'], { cwd: classicSource });
-  const catalog = JSON.parse(await fsp.readFile(path.join(classicSource, 'assets', 'templates', 'manifest.json'), 'utf8'));
-  const classicCount = catalog.templates.filter((item) => item.pack !== 'gengtu').length;
-  if (classicCount !== 610 || gengtuCount !== 32 || catalog.templates.length !== 642) {
-    throw new Error(`C1/B3 模板数异常：C1=${classicCount}，B3=${gengtuCount}，总计=${catalog.templates.length}`);
-  }
-  await run('npm', ['prune', '--omit=dev', '--no-audit', '--no-fund'], { cwd: classicSource });
-  await fsp.rm(engineDir, { recursive: true, force: true });
-  await fsp.mkdir(engineDir, { recursive: true });
-  for (const entry of ['dist', 'assets', 'node_modules']) {
-    await fsp.cp(path.join(classicSource, entry), path.join(engineDir, entry), { recursive: true, force: true });
-  }
-  for (const entry of ['package.json', 'package-lock.json', 'LICENSE', 'NOTICE', 'README.md']) {
-    if (fs.existsSync(path.join(classicSource, entry))) await fsp.copyFile(path.join(classicSource, entry), path.join(engineDir, entry));
-  }
-  await fsp.writeFile(provenanceFile, `${JSON.stringify({
-    upstream: 'https://github.com/kartikkabadi/meme-maker',
-    classicCommit: CLASSIC_MEME_COMMIT,
-    classicTemplates: classicCount,
-    gengtuUpstream: 'https://github.com/cholf5/gengtu',
-    gengtuCommit: GENGTU_COMMIT,
-    gengtuTemplates: gengtuCount,
-    templates: catalog.templates.length,
-    licenses: ['MIT code', 'per-template source and media terms retained in manifest/CREDITS.md']
-  }, null, 2)}\n`, 'utf8');
-  return catalog.templates.length;
-}
-
 async function expandedTemplateCount(memeHome) {
-  const tudou = await fsp.readFile(path.join(memeHome, 'engines', 'tudou-meme', 'manifest.json'), 'utf8')
+  return fsp.readFile(path.join(memeHome, 'engines', 'tudou-meme', 'manifest.json'), 'utf8')
     .then((text) => JSON.parse(text).templates?.length || 0).catch(() => 0);
-  const classic = await fsp.readFile(path.join(memeHome, 'engines', 'classic-memes', 'qq-agent-manifest.json'), 'utf8')
-    .then((text) => JSON.parse(text).templates || 0).catch(() => 0);
-  return tudou + classic;
 }
 
 function ensureMemeConfig(content) {
@@ -665,6 +549,8 @@ async function install() {
     await fsp.mkdir(cliExtract, { recursive: true });
     await fsp.mkdir(path.dirname(cliDestination), { recursive: true });
     await fsp.mkdir(librariesDir, { recursive: true });
+    // C1/B3 have no avatar slots and were explicitly removed from this deployment.
+    await fsp.rm(path.join(memeHome, 'engines', 'classic-memes'), { recursive: true, force: true });
 
     if (options.trendingOnly) {
       if (!fs.existsSync(cliDestination)) throw new Error('尚未安装基础生成器，不能使用 --trending-only');
@@ -680,12 +566,11 @@ async function install() {
       if (!fs.existsSync(cliDestination)) throw new Error('尚未安装基础生成器，不能使用 --expanded-only');
       await installCrazyEmoji({ tempDir, memeHome, librariesDir });
       await installTudouMeme({ tempDir, memeHome });
-      await installClassicMemes({ tempDir, memeHome });
       const env = { ...process.env, MEME_HOME: memeHome };
       const { stdout } = await run(cliDestination, ['list'], { cwd: memeHome, env, capture: true });
       const nativeCount = stdout.split(/\r?\n/).filter((line) => /^\s*\d+\.\s+/.test(line)).length;
       const externalCount = await expandedTemplateCount(memeHome);
-      console.log(`B1/B2/B3/C1 安装完成：原生 ${nativeCount} 个，独立引擎 ${externalCount} 个，总计 ${nativeCount + externalCount} 个模板。请重启 QQ Agent。`);
+      console.log(`B1/B2 安装完成：原生 ${nativeCount} 个，独立引擎 ${externalCount} 个，总计 ${nativeCount + externalCount} 个模板。请重启 QQ Agent。`);
       return;
     }
 
@@ -770,7 +655,6 @@ async function install() {
       if (!options.skipExpanded) {
         await installCrazyEmoji({ tempDir, memeHome, librariesDir });
         await installTudouMeme({ tempDir, memeHome });
-        await installClassicMemes({ tempDir, memeHome });
       }
     }
 
