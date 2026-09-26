@@ -17,10 +17,15 @@ process.env.MEME_HOME = memeHome;
 
 const execFileAsync = promisify(execFile);
 const cliPath = path.join(memeHome, 'bin', 'meme');
+const tudouEngineDir = path.join(memeHome, 'engines', 'tudou-meme');
+const classicEngineDir = path.join(memeHome, 'engines', 'classic-memes');
 
 let library = null;
 let libraryPromise = null;
 let cliCatalog = null;
+let combinedCatalog = new Map();
+let engineRoutes = new Map();
+let engineCounts = { native: 0, tudou: 0, gengtu: 0, classic: 0 };
 let cliInfoCache = new Map();
 let cliVersion = '';
 let resourceState = 'idle';
@@ -97,10 +102,12 @@ function walkStats(dir) {
 function resourceStats() {
   const fonts = walkStats(path.join(memeHome, 'resources', 'fonts'));
   const images = walkStats(path.join(memeHome, 'resources', 'images'));
+  const engines = walkStats(path.join(memeHome, 'engines'));
   return {
     home: memeHome,
     fonts,
     images,
+    engines,
     ready: images.files > 0 && fonts.files > 0
   };
 }
@@ -174,6 +181,101 @@ async function refreshCliCatalog() {
   if (!cliCatalog.size) throw new Error('外部表情生成器没有返回模板列表');
 }
 
+function addCatalogEntry(info, route) {
+  if (!info?.key || combinedCatalog.has(info.key)) return;
+  combinedCatalog.set(info.key, decorateInfo(info));
+  engineRoutes.set(info.key, route);
+}
+
+async function refreshCombinedCatalog() {
+  combinedCatalog = new Map();
+  engineRoutes = new Map();
+  engineCounts = { native: cliCatalog?.size || 0, tudou: 0, gengtu: 0, classic: 0 };
+  for (const info of cliCatalog?.values() || []) {
+    addCatalogEntry(info, { engine: 'native', internalKey: info.key });
+  }
+
+  const tudouManifest = await fs.promises.readFile(path.join(tudouEngineDir, 'manifest.json'), 'utf8')
+    .then(JSON.parse).catch(() => null);
+  for (const item of tudouManifest?.templates || []) {
+    const publicKey = `tudou_${String(item.publicKey || item.key || '')}`;
+    addCatalogEntry({
+      ...item,
+      key: publicKey,
+      keywords: [...new Set([String(item.key || ''), ...(item.keywords || []).map(String)])],
+      tags: [...new Set([...(item.tags || []).map(String), 'tudou-meme'])]
+    }, {
+      engine: 'tudou',
+      internalKey: String(item.key || ''),
+      moduleDir: String(item.moduleDir || '')
+    });
+    engineCounts.tudou += 1;
+  }
+
+  const classicManifest = await fs.promises.readFile(path.join(classicEngineDir, 'assets', 'templates', 'manifest.json'), 'utf8')
+    .then(JSON.parse).catch(() => null);
+  const classicTemplates = Array.isArray(classicManifest?.templates) ? classicManifest.templates : [];
+  // Gengtu is inserted before the large classic catalog so its Chinese names win exact-keyword ties.
+  const ordered = [
+    ...classicTemplates.filter((item) => item.pack === 'gengtu'),
+    ...classicTemplates.filter((item) => item.pack !== 'gengtu')
+  ];
+  for (const item of ordered) {
+    const isGengtu = item.pack === 'gengtu';
+    const sourceKey = isGengtu ? String(item.id || '').replace(/^gengtu-/, '') : String(item.id || '');
+    const publicKey = `${isGengtu ? 'gengtu' : 'classic'}_${sourceKey}`;
+    const slots = Array.isArray(item.slots) ? item.slots : [];
+    addCatalogEntry({
+      key: publicKey,
+      keywords: [...new Set([String(item.name || ''), sourceKey, ...(item.tags || []).map(String)].filter(Boolean))],
+      shortcuts: [],
+      tags: [...new Set([...(item.tags || []).map(String), isGengtu ? 'gengtu' : 'classic-meme'])],
+      params: {
+        minImages: 0,
+        maxImages: 0,
+        minTexts: 0,
+        maxTexts: slots.length,
+        defaultTexts: []
+      }
+    }, {
+      engine: 'classic',
+      internalKey: String(item.id || ''),
+      template: item
+    });
+    engineCounts[isGengtu ? 'gengtu' : 'classic'] += 1;
+  }
+}
+
+async function resolveCombinedMeme(query) {
+  const resolved = async (info) => {
+    if (!info) return null;
+    const route = engineRoutes.get(info.key);
+    if (route?.engine !== 'native') return info;
+    const detailed = await cliInfo(route.internalKey);
+    if (detailed) combinedCatalog.set(info.key, detailed);
+    return detailed || info;
+  };
+  const q = normalizeQuery(query);
+  if (!q) return null;
+  const alias = MEME_ALIASES.get(q);
+  if (alias && combinedCatalog.has(alias)) return resolved(combinedCatalog.get(alias));
+  for (const info of combinedCatalog.values()) {
+    if (normalizeQuery(info.key) === q) return resolved(info);
+  }
+  for (const info of combinedCatalog.values()) {
+    if (info.keywords.some((keyword) => normalizeQuery(keyword) === q)) return resolved(info);
+    if (info.shortcuts.some((shortcut) => shortcut.names.some((name) => normalizeQuery(name) === q))) return resolved(info);
+  }
+  const localMatches = [...combinedCatalog.values()].filter((info) => infoMatchesQuery(info, q));
+  if (localMatches.length === 1) return resolved(localMatches[0]);
+  if (cliCatalog) {
+    const { stdout } = await runCli(['search', query], { timeout: 10000 });
+    const matches = parseCliList(stdout);
+    if (matches.size === 1) return resolved(combinedCatalog.get(matches.keys().next().value));
+  }
+  return null;
+}
+
 async function cliInfo(key) {
   if (cliInfoCache.has(key)) return cliInfoCache.get(key);
   const base = cliCatalog?.get(key);
@@ -243,6 +345,105 @@ async function generateWithCli(payload) {
   }
 }
 
+async function generateWithTudou(payload, route, info) {
+  const python = path.join(tudouEngineDir, 'venv', 'bin', 'python');
+  const runner = path.join(tudouEngineDir, 'runner.py');
+  const source = path.join(tudouEngineDir, 'source');
+  if (!fs.existsSync(python) || !fs.existsSync(runner)) throw new Error('tudou-meme 引擎尚未安装完整');
+  const tempRoot = path.join(memeHome, 'tmp');
+  fs.mkdirSync(tempRoot, { recursive: true });
+  const jobDir = fs.mkdtempSync(path.join(tempRoot, 'tudou-'));
+  try {
+    const imagePaths = [];
+    const imageNames = [];
+    for (const [index, image] of (payload.images || []).entries()) {
+      const suppliedName = path.basename(String(image?.name || `image-${index + 1}.png`));
+      const safeName = suppliedName.replace(/[^\p{L}\p{N}._-]+/gu, '_') || `image-${index + 1}.png`;
+      const imagePath = path.join(jobDir, `${index + 1}-${safeName}`);
+      fs.writeFileSync(imagePath, Buffer.from(image?.data || []));
+      imagePaths.push(imagePath);
+      imageNames.push(suppliedName.replace(/\.[^.]+$/, ''));
+    }
+    const textsFile = path.join(jobDir, 'texts.json');
+    const namesFile = path.join(jobDir, 'names.json');
+    const output = path.join(jobDir, 'result.bin');
+    fs.writeFileSync(textsFile, JSON.stringify((payload.texts || []).map(String)));
+    fs.writeFileSync(namesFile, JSON.stringify(imageNames));
+    const args = [
+      runner, 'generate', '--source', source, '--module', route.moduleDir,
+      '--key', route.internalKey, '--texts-json', textsFile, '--names-json', namesFile,
+      '--output', output
+    ];
+    for (const imagePath of imagePaths) args.push('--image', imagePath);
+    await execFileAsync(python, args, {
+      cwd: tudouEngineDir,
+      env: {
+        ...process.env,
+        QQ_AGENT_MEME_PY_HOME: path.join(tudouEngineDir, 'home'),
+        PYTHONUTF8: '1'
+      },
+      timeout: 120000,
+      maxBuffer: 16 * 1024 * 1024,
+      encoding: 'utf8'
+    });
+    if (!fs.existsSync(output)) throw new Error('tudou-meme 没有生成结果');
+    return { data: fs.readFileSync(output), info };
+  } finally {
+    fs.rmSync(jobDir, { recursive: true, force: true });
+  }
+}
+
+async function generateWithClassic(payload, route, info) {
+  const cli = path.join(classicEngineDir, 'dist', 'cli.js');
+  const templatesDir = path.join(classicEngineDir, 'assets', 'templates');
+  if (!fs.existsSync(cli)) throw new Error('C1 经典模板引擎尚未安装完整');
+  const tempRoot = path.join(memeHome, 'tmp');
+  fs.mkdirSync(tempRoot, { recursive: true });
+  const jobDir = fs.mkdtempSync(path.join(tempRoot, 'classic-'));
+  try {
+    const isGif = String(route.template?.type || '') === 'gif';
+    const output = path.join(jobDir, `result.${isGif ? 'gif' : 'png'}`);
+    const args = [
+      cli, '--templates-dir', templatesDir, 'render', '--template', route.internalKey
+    ];
+    const slots = Array.isArray(route.template?.slots) ? route.template.slots : [];
+    for (const [index, value] of (payload.texts || []).entries()) {
+      const slot = String(slots[index]?.name || index + 1);
+      args.push('--text', `${slot}=${String(value)}`);
+    }
+    args.push('-o', output, '--force', '--json');
+    await execFileAsync(process.execPath, args, {
+      cwd: jobDir,
+      env: {
+        ...process.env,
+        ELECTRON_RUN_AS_NODE: '1',
+        MEME_TEMPLATES_DIR: templatesDir,
+        MEME_OUTPUT_ROOT: jobDir
+      },
+      timeout: 120000,
+      maxBuffer: 16 * 1024 * 1024,
+      encoding: 'utf8'
+    });
+    if (!fs.existsSync(output)) throw new Error('C1 经典模板引擎没有生成结果');
+    return { data: fs.readFileSync(output), info };
+  } finally {
+    fs.rmSync(jobDir, { recursive: true, force: true });
+  }
+}
+
+async function generateCombined(payload) {
+  const publicKey = String(payload.key || '');
+  const route = engineRoutes.get(publicKey);
+  const info = combinedCatalog.get(publicKey);
+  if (!route || !info) throw new Error(`找不到模板：${publicKey}`);
+  if (route.engine === 'native') {
+    return generateWithCli({ ...payload, key: route.internalKey });
+  }
+  if (route.engine === 'tudou') return generateWithTudou(payload, route, info);
+  if (route.engine === 'classic') return generateWithClassic(payload, route, info);
+  throw new Error(`未知模板引擎：${route.engine}`);
+}
+
 async function ensureLibrary() {
   if (!libraryPromise) {
     libraryPromise = import('@memecrafters/meme-generator').then((mod) => {
@@ -303,6 +504,7 @@ async function initialize(payload = {}) {
       }
     }
     await refreshCliCatalog();
+    await refreshCombinedCatalog();
     initializedAt = Date.now();
     const stats = resourceStats();
     resourceState = stats.ready ? 'ready' : (resourceError ? 'error' : 'partial');
@@ -331,8 +533,9 @@ function status() {
     error: resourceError,
     initializedAt,
     version: cliCatalog ? cliVersion : (library ? library.getVersion() : ''),
-    templates: cliCatalog ? cliCatalog.size : (library ? library.getMemeKeys().length : 0),
-    engine: cliCatalog ? 'cli-external' : 'node-native',
+    templates: cliCatalog ? combinedCatalog.size : (library ? library.getMemeKeys().length : 0),
+    engine: cliCatalog ? 'multi-local' : 'node-native',
+    engines: cliCatalog ? { ...engineCounts } : { native: library ? library.getMemeKeys().length : 0 },
     resources: stats
   };
 }
@@ -341,17 +544,17 @@ async function handle(type, payload = {}) {
   if (type === 'initialize') return initialize(payload);
   if (cliCatalog) {
     if (type === 'status') return status();
-    if (type === 'resolve') return resolveCliMeme(payload.query);
+    if (type === 'resolve') return resolveCombinedMeme(payload.query);
     if (type === 'list') {
       const query = String(payload.query || '').trim();
-      if (!query) return [...cliCatalog.values()];
-      const localMatches = [...cliCatalog.values()].filter((item) => infoMatchesQuery(item, query));
+      if (!query) return [...combinedCatalog.values()];
+      const localMatches = [...combinedCatalog.values()].filter((item) => infoMatchesQuery(item, query));
       if (localMatches.length) return localMatches;
       const { stdout } = await runCli(['search', query], { timeout: 10000 });
       const keys = new Set(parseCliList(stdout).keys());
-      return [...cliCatalog.values()].filter((item) => keys.has(item.key));
+      return [...combinedCatalog.values()].filter((item) => keys.has(item.key));
     }
-    if (type === 'generate') return generateWithCli(payload);
+    if (type === 'generate') return generateCombined(payload);
   }
   await ensureLibrary();
 

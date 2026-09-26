@@ -40,7 +40,7 @@ Status updated on September 22, 2026.
 | Real message handling | Complete | Real QQ message receipt, sending, and bot replies were manually verified |
 | Custom personas | Complete | New local personas can be selected and applied at runtime; local test persona cards are not committed |
 | Image retrieval | Complete | Fake-IP addresses are resolved to public addresses before the existing private-network safety checks run |
-| Local meme extension | Complete | A deterministic `#meme` route, isolated Worker, authenticated NapCat avatar bridge, message-image inputs, trending-keyword aliases, and 744 pinned-version templates are enabled locally |
+| Local meme extension | Complete | A deterministic `#meme` route, isolated Worker/subprocesses, authenticated NapCat avatar bridge, message-image inputs, trending-keyword aliases, and 1,544 pinned-version templates are enabled locally |
 | Restricted macOS permissions | Complete | An unreadable QQ sandbox no longer produces a false “not installed” result; manual tokens can be used |
 | Full post-port test suite | Not run | Upstream test scripts remain, but their presence does not mean the port has passed the complete suite |
 | Apple signing and notarization | Not implemented | The release is unsigned and unnotarized; first launch may require right-clicking the app and choosing **Open** |
@@ -58,7 +58,7 @@ macOS QQ.app + NapCat
 QQ Agent Mac
 ├── ConnectorManager: QQ/NapCat discovery, lifecycle, configuration, and WebUI
 ├── OneBotClient: message events and action calls
-├── MemeGenerator: deterministic #meme routing, image inputs, and an isolated native Worker
+├── MemeGenerator: deterministic #meme routing, image inputs, and isolated multi-engine generation
 ├── Orchestrator: session orchestration and tool calls
 ├── Store / Memory: local message archive and long-term memory
 └── Electron + Web UI: desktop control console
@@ -91,7 +91,7 @@ Compared with the upstream baseline, this repository includes the following chan
 - Added support for macOS app-data protection by distinguishing missing directories from unreadable directories and accepting the QQ entry point plus both OneBot ports as runtime evidence.
 - Fixed QQ process detection returning an invalid PID of `0`.
 - Added a deterministic `#meme` route that bypasses the LLM, runs native generation in an isolated Worker, and reuses the existing OneBot send queue and rate limits.
-- Added `meme-emoji`, the official `meme-generator-contrib-rs`, and the QQ Agent trending-meme pack; the pinned local setup loads 744 templates and keeps third-party binaries, resources, and caches in the app-data directory.
+- Added `meme-emoji`, the official `meme-generator-contrib-rs`, the QQ Agent trending pack, and the selected B1/B2/B3/C1 sources; the pinned local setup loads 1,544 templates and keeps third-party binaries, resources, and caches in the app-data directory.
 - Added the local `qq-avatar-bridge` NapCat plugin. It retrieves group-member avatars through the signed-in QQ session first, retains the public QQ endpoints and stale cache as fallbacks, accepts loopback requests only, and requires a separate random token.
 
 ## Inherited Upstream Features
@@ -196,7 +196,7 @@ npm run setup:avatar-bridge
 npm start
 ```
 
-The avatar-bridge installer writes only to NapCat's program and application-data directories; it does not modify `QQ.app`. Run it once after initial setup and again after a NapCat update, then restart QQ/NapCat and QQ Agent. See the [local meme-generator extension guide](docs/MEME_EXTENSION.md) for the complete 744-template setup.
+The avatar-bridge installer writes only to NapCat's program and application-data directories; it does not modify `QQ.app`. Run it once after initial setup and again after a NapCat update, then restart QQ/NapCat and QQ Agent. See the [local meme-generator extension guide](docs/MEME_EXTENSION.md) for the complete 1,544-template setup.
 
 The current `package-lock.json` records npmmirror download URLs. npm 12 may report `EALLOWREMOTE` when the active registry differs from the lockfile source. In that case, install from the same mirror:
 
@@ -255,7 +255,7 @@ Commands use the `#meme` prefix and bypass the language model:
 
 The route supports QQ numbers, `@` mentions, images attached to the current message, and images from a replied-to message. Configuration for cooldowns, generation timeout, disabled templates, administrators, resource checks, and avatar caching is under **Settings → Chat Settings → Meme Commands**.
 
-The engine comes from [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs), with additional templates from [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji), [MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs), and this repository's trending-meme pack. See the [extension guide](docs/MEME_EXTENSION.md) and [complete candidate catalog](docs/MEME_CANDIDATES.md) for pinned versions, licenses, content boundaries, packaged-app installation, disk usage, and troubleshooting.
+The engine comes from [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs), with additional templates from [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji), [MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs), [anyliew/crazy-emoji](https://github.com/anyliew/crazy-emoji), [LRZ9712/tudou-meme](https://github.com/LRZ9712/tudou-meme), [cholf5/gengtu](https://github.com/cholf5/gengtu), [kartikkabadi/meme-maker](https://github.com/kartikkabadi/meme-maker), and this repository's trending-meme pack. See the [extension guide](docs/MEME_EXTENSION.md) and [complete candidate catalog](docs/MEME_CANDIDATES.md) for pinned versions, licenses, content boundaries, packaged-app installation, disk usage, and troubleshooting.
 
 ### 8. Restore Standard QQ
 
@@ -301,7 +301,11 @@ This repository has the following source relationships:
 6. **Additional templates:** [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji), pinned to `v0.0.6+build.59`. Its repository identifies the code as MIT; image rights and usage boundaries remain subject to that project’s own notice.
 7. **Official extra templates:** [MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs), pinned to commit `5658321`. The project is MIT-licensed and explicitly contains niche, experimental, or potentially uncomfortable templates.
 8. **Trending-meme pack:** Source lives in `extensions/qq-agent-trending-memes-rs`. Its back-handed opossum image is downloaded with a pinned SHA-256 from the MIT-licensed [claw16/codex-pet-beishoufushu](https://github.com/claw16/codex-pet-beishoufushu); the SBTI card follows open-project layout ideas, and the remaining cards are drawn by this repository's code. See the [candidate catalog](docs/MEME_CANDIDATES.md) for full provenance.
-8. **Design reference:** [SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator). This implementation does not depend on AstrBot and does not copy that plugin’s source into this repository.
+9. **B1 template extension:** [anyliew/crazy-emoji](https://github.com/anyliew/crazy-emoji), pinned to commit `51f6a21` and compiled locally with Rust `1.93.1`.
+10. **B2 Python templates:** [LRZ9712/tudou-meme](https://github.com/LRZ9712/tudou-meme), pinned to commit `016f46b`; its 122 actual template modules run in an isolated Python `meme-generator 0.1.14` environment.
+11. **B3 static templates:** [cholf5/gengtu](https://github.com/cholf5/gengtu), pinned to commit `cd17bfa`; 32 templates are converted for the C1 local renderer.
+12. **C1 classic templates and renderer:** [kartikkabadi/meme-maker](https://github.com/kartikkabadi/meme-maker), pinned to commit `0e8531e`, contributing 610 templates while retaining per-template provenance and media terms.
+13. **Design reference:** [SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator). This implementation does not depend on AstrBot and does not copy that plugin’s source into this repository.
 
 See [UPSTREAM_CHECK.md](UPSTREAM_CHECK.md) for the upstream version-check record. The port retains the repository’s existing MIT license and copyright notices; see [LICENSE](LICENSE). Users must also comply with the licenses and terms governing QQ, NapCat, and other third-party dependencies.
 

@@ -357,6 +357,7 @@ export class MemeGenerator {
     return [
       `表情模块：${stateNames[status.state] || status.state || '未知'}`,
       `生成器：${status.version || '加载中'}；模板 ${status.templates || 0} 个`,
+      status.engines ? `模板来源：原生 ${status.engines.native || 0}，tudou ${status.engines.tudou || 0}，gengtu ${status.engines.gengtu || 0}，经典模板 ${status.engines.classic || 0}` : '',
       `资源：图片 ${images.files || 0} 个 / ${readableBytes(images.bytes)}，字体 ${fonts.files || 0} 个 / ${readableBytes(fonts.bytes)}`,
       `头像缓存：${status.avatarCache?.files || 0} 个 / ${readableBytes(status.avatarCache?.bytes)}`,
       `NapCat 头像桥：${status.avatarBridge?.enabled === false ? '已关闭' : (status.avatarBridge?.state === 'ready' ? '已连接' : status.avatarBridge?.state === 'error' ? '暂不可用（自动使用公网回退）' : '等待首次使用')}`,

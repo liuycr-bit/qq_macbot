@@ -40,7 +40,7 @@ QQ Agent Mac 是对 [K0nd1us/QQ-agent](https://github.com/K0nd1us/QQ-agent) 进�
 | 真实消息收发 | 已完成 | 用户已在真实 QQ 环境完成人工联调并确认收发和机器人响应正常 |
 | 自定义人设 | 已完成 | 新增本地人设可被选择并在运行时生效；本地测试角色卡不提交到仓库 |
 | 图片获取 | 已完成 | Fake-IP 环境下先解析真实公网地址，再执行原有内网地址安全拦截；本机人工测试正常 |
-| 本地表情扩展 | 已完成 | `#meme` 独立路由、Worker 隔离、NapCat 登录态头像桥、消息图片输入、热词别名和 744 个固定版本模板已在本机启用 |
+| 本地表情扩展 | 已完成 | `#meme` 独立路由、Worker/子进程隔离、NapCat 登录态头像桥、消息图片输入、热词别名和 1544 个固定版本模板已在本机启用 |
 | macOS 权限受限适配 | 已完成 | QQ 沙盒目录不可读时不再误报未安装，可使用手动令牌完成本机连接 |
 | 移植后的完整测试 | 未执行 | 上游测试脚本仍在，但不能据此声称当前移植版测试通过 |
 | Apple 签名和公证 | 未实施 | 当前发布包未签名、未公证，首次打开可能需要右键选择“打开” |
@@ -58,7 +58,7 @@ macOS QQ.app + NapCat
 QQ Agent Mac
 ├── ConnectorManager：QQ/NapCat 探测、启停、配置同步、WebUI
 ├── OneBotClient：消息接收与动作调用
-├── MemeGenerator：#meme 独立路由、头像/图片输入与 Worker 原生生成
+├── MemeGenerator：#meme 独立路由、头像/图片输入与 Worker 多引擎生成
 ├── Orchestrator：会话编排与工具调用
 ├── Store / Memory：本地消息存档与长期记忆
 └── Electron + Web UI：本机图形控制台
@@ -91,7 +91,7 @@ QQ Agent Mac
 - 适配 macOS App 数据保护：区分目录不存在与读取受限，并允许用 QQ 入口和 OneBot 双端口作为运行证据。
 - 修正 QQ 进程检测可能出现无效 PID `0` 的问题。
 - 增加 `#meme` 确定性表情命令路由：命令不进入大模型，原生生成在独立 Worker 中运行，结果继续复用 OneBot 发送队列和限频。
-- 增加 `meme-emoji`、官方 `meme-generator-contrib-rs` 与 QQ Agent 近期热梗包；固定版本在本机共加载 744 个模板，第三方程序和资源只写入应用数据目录。
+- 增加 `meme-emoji`、官方 `meme-generator-contrib-rs`、QQ Agent 近期热梗包，以及用户选定的 B1/B2/B3/C1 模板源；固定版本在本机共加载 1544 个模板，第三方程序和资源只写入应用数据目录。
 - 增加本机 `qq-avatar-bridge` NapCat 插件：优先通过已登录 QQ 会话获取群成员头像，公网 QQ 头像接口和旧缓存作为后备；接口仅允许环回地址并使用独立随机令牌。
 
 ## 继承的上游能力
@@ -196,7 +196,7 @@ npm run setup:avatar-bridge
 npm start
 ```
 
-头像桥安装脚本只写入 NapCat 的程序/数据目录，不修改 `QQ.app`。首次安装或 NapCat 更新后执行一次，并重启 QQ/NapCat 与 QQ Agent。表情生成器和 744 个模板的完整安装步骤见 [本地表情生成扩展](docs/MEME_EXTENSION.md)。
+头像桥安装脚本只写入 NapCat 的程序/数据目录，不修改 `QQ.app`。首次安装或 NapCat 更新后执行一次，并重启 QQ/NapCat 与 QQ Agent。表情生成器和 1544 个模板的完整安装步骤见 [本地表情生成扩展](docs/MEME_EXTENSION.md)。
 
 当前 `package-lock.json` 记录的是 npmmirror 下载地址。npm 12 在“当前 registry 与锁文件来源不一致”时可能报 `EALLOWREMOTE`，此时使用与锁文件一致的镜像安装：
 
@@ -255,7 +255,7 @@ npm run setup:meme
 
 命令支持当前消息图片和引用消息图片。模板开关可由群主、群管理员或设置中指定的表情管理员通过 `#meme 禁用 <模板>`、`#meme 启用 <模板>` 管理。前缀、冷却、生成超时、模板禁用、资源检查和头像缓存位于“设置 → 聊天设置 → 表情生成命令”。资源与缓存写入开发版 `runtime/data/meme-generator/` 或打包版 Application Support 数据目录，不写入 `.app`。
 
-生成引擎来自 [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs)，额外模板来自 [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji)、[MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs) 和本仓库的近期热梗包。它们是独立第三方项目或独立扩展；版本、许可、内容边界、候选模板目录、磁盘占用、打包版部署方法和故障排查见 [本地表情生成扩展](docs/MEME_EXTENSION.md) 与 [待选模板完整清单](docs/MEME_CANDIDATES.md)。
+生成引擎来自 [MemeCrafters/meme-generator-rs](https://github.com/MemeCrafters/meme-generator-rs)，额外模板来自 [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji)、[MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs)、[anyliew/crazy-emoji](https://github.com/anyliew/crazy-emoji)、[LRZ9712/tudou-meme](https://github.com/LRZ9712/tudou-meme)、[cholf5/gengtu](https://github.com/cholf5/gengtu)、[kartikkabadi/meme-maker](https://github.com/kartikkabadi/meme-maker) 和本仓库的近期热梗包。它们是独立第三方项目或独立扩展；版本、许可、内容边界、候选模板目录、磁盘占用、打包版部署方法和故障排查见 [本地表情生成扩展](docs/MEME_EXTENSION.md) 与 [待选模板完整清单](docs/MEME_CANDIDATES.md)。
 
 ### 8. 恢复原版 QQ
 
@@ -300,7 +300,11 @@ NapCat 需通过 [NapCat-Mac-Installer](https://github.com/NapNeko/NapCat-Mac-In
 6. **扩展模板库**：[anyliew/meme-emoji](https://github.com/anyliew/meme-emoji)，本仓库安装脚本固定使用 `v0.0.6+build.59`；代码仓库标注 MIT，图片素材权利与用途边界以该项目自己的说明为准。
 7. **官方额外模板库**：[MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs)，固定使用提交 `5658321`；项目标注 MIT，并明确包含小众、实验性或可能引起不适的模板。
 8. **近期热梗包**：源码位于 `extensions/qq-agent-trending-memes-rs`，其中背手负鼠图像取自 MIT 许可的 [claw16/codex-pet-beishoufushu](https://github.com/claw16/codex-pet-beishoufushu)，安装时按固定 SHA-256 下载到应用数据目录；SBTI 只参考开放项目的卡片思路，其他卡片由本仓库代码绘制。完整来源和待选模板见 [候选清单](docs/MEME_CANDIDATES.md)。
-8. **方案参考**：[SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator)。本仓库的实现不依赖 AstrBot，也未把该插件源码复制进来。
+9. **B1 扩展模板库**：[anyliew/crazy-emoji](https://github.com/anyliew/crazy-emoji)，固定使用提交 `51f6a21`，以 Rust `1.93.1` 在本机编译。
+10. **B2 Python 模板库**：[LRZ9712/tudou-meme](https://github.com/LRZ9712/tudou-meme)，固定使用提交 `016f46b`，在独立 Python `meme-generator 0.1.14` 环境中运行 122 个实际模板模块。
+11. **B3 静态梗图库**：[cholf5/gengtu](https://github.com/cholf5/gengtu)，固定使用提交 `cd17bfa`，32 个模板转换后交给 C1 本地渲染器。
+12. **C1 经典模板库与渲染器**：[kartikkabadi/meme-maker](https://github.com/kartikkabadi/meme-maker)，固定使用提交 `0e8531e`，提供 610 个模板；逐模板来源和素材条款随安装清单保留。
+13. **方案参考**：[SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator)。本仓库的实现不依赖 AstrBot，也未把该插件源码复制进来。
 
 上游版本检查记录见 [UPSTREAM_CHECK.md](UPSTREAM_CHECK.md)。移植代码沿用仓库现有 MIT 许可证和版权声明，详见 [LICENSE](LICENSE)。使用本项目时还应分别遵守 QQ、NapCat 及其他第三方依赖的许可和使用规则。
 

@@ -23,22 +23,26 @@ QQ Agent 消息入口
 | [anyliew/meme-emoji](https://github.com/anyliew/meme-emoji) | 额外模板动态库与图片资源 | `v0.0.6+build.59` | 代码仓库标注 MIT；图片素材来源与使用限制以该项目声明为准 |
 | [MemeCrafters/meme-generator-contrib-rs](https://github.com/MemeCrafters/meme-generator-contrib-rs) | 官方额外模板库，包含 10 个小众、实验性或可能引起不适的模板 | `5658321` | MIT；图片素材来自网络，权利边界以该项目声明为准 |
 | 本仓库 `qq-agent-trending-memes-rs` | 近期热梗模板包，提供背手负鼠、SBTI、牛来、旋转猫等 11 个模板 | `0.1.0` | 扩展代码随本仓库按 MIT 发布；背手负鼠图片来自 MIT 许可的 [claw16/codex-pet-beishoufushu](https://github.com/claw16/codex-pet-beishoufushu)，其余图片由代码绘制 |
+| [anyliew/crazy-emoji](https://github.com/anyliew/crazy-emoji)（B1） | 38 个 Rust 模板；其中两个键与既有模板重复，最终增加 36 个可用键 | `51f6a21` | MIT 代码；素材权利边界以该项目声明为准 |
+| [LRZ9712/tudou-meme](https://github.com/LRZ9712/tudou-meme)（B2） | 122 个 Python 模板模块，通过 Worker 的独立子进程生成 | `016f46b` + `meme-generator 0.1.14` | MIT 代码；包含 NSFW、粗俗等内容，素材权利边界以该项目声明为准 |
+| [cholf5/gengtu](https://github.com/cholf5/gengtu)（B3） | 32 个图片/JSON 模板，安装时转换为 C1 模板包 | `cd17bfa` | MIT 仓库；素材权利边界以该项目声明为准 |
+| [kartikkabadi/meme-maker](https://github.com/kartikkabadi/meme-maker)（C1） | 610 个经典静态/GIF 模板及本地 CLI 渲染器 | `0e8531e` | MIT 代码；逐模板来源和素材条款保留在安装后的 manifest/CREDITS 中 |
 | [NapNeko/NapCatQQ](https://github.com/NapNeko/NapCatQQ) | 使用已登录 QQ 会话的 `NodeIKernelAvatarService` 下载群成员头像 | 本机 `4.18.28` | NapCat 本身按其仓库许可发布；本仓库只提供独立的本机头像桥接插件 |
 | [SodaSizzle/astrbot_plugin_meme_generator](https://github.com/SodaSizzle/astrbot_plugin_meme_generator) | 需求与交互方案参考 | 不作为依赖 | 本实现不安装 AstrBot，也未复制该插件源码 |
 
-安装脚本从上述项目的 GitHub Release 和固定版本下载内容，对 Release 中的两个可执行产物执行固定 SHA-256 校验，并使用与主 CLI 相同的 Rust `1.93.1` 从固定提交编译 contrib 动态库。第三方二进制、字体、模板图片和用户头像缓存均放在应用数据目录，不提交到本仓库、不写入 `.app`，也不受本仓库自身 MIT 许可重新授权。
+安装脚本从上述项目的 GitHub Release 或固定提交下载内容，并对下载归档执行固定 SHA-256 校验。Rust 扩展使用固定的 `1.93.1` 工具链编译；B2 使用独立 Python 虚拟环境；B3/C1 使用独立 Node CLI。第三方二进制、运行环境、字体、模板图片和用户头像缓存均放在应用数据目录，不提交到本仓库、不写入 `.app`，也不受本仓库自身 MIT 许可重新授权。
 
-按当前固定版本，本机加载结果为 **744 个模板**。上游版本、资源或模板键发生变化时，数量可能不同；以 `#meme 状态` 的实际结果为准。近期热梗、关键词别名和下一批 GitHub 候选来源见 [表情模板来源与待选清单](MEME_CANDIDATES.md)。
+按当前固定版本，本机加载结果为 **1544 个模板**：原生引擎 780 个，B2 122 个，B3 32 个，C1 610 个。以 `#meme 状态` 的实际结果为准。近期热梗、关键词别名和 GitHub 来源清单见 [表情模板来源与待选清单](MEME_CANDIDATES.md)。
 
 ## 部署
 
 ### 环境要求
 
 - macOS，支持 Apple Silicon（arm64）和 Intel（x64）；本项目正式构建配置当前以 arm64 为主。
-- Node.js `>= 20`、npm、Git。
+- Node.js `>= 20`、npm、Git，以及 Python `>= 3.9`（用于 B2 隔离环境）。
 - 完整安装 contrib 模板需要 Homebrew `rustup`；执行 `brew install rustup` 即可，安装脚本会自动准备与主 CLI 匹配的 Rust `1.93.1`。
 - QQ、NapCat 和 OneBot v11 已按照主 README 配置完成。
-- 建议预留至少 2 GB 空闲空间。首次安装需要下载原生程序、Rust 工具链、字体和大量模板图片。
+- 建议预留至少 4 GB 空闲空间。当前完整数据目录约 1.7 GB，首次安装还需要临时构建空间。
 
 ### 开发模式
 
@@ -62,6 +66,9 @@ runtime/data/meme-generator/
 ├── libraries/meme-emoji-macos-*.dylib
 ├── libraries/meme-generator-contrib-macos-*.dylib
 ├── libraries/qq-agent-trending-memes-macos-*.dylib
+├── libraries/crazy-emoji-macos-*.dylib
+├── engines/tudou-meme/        # B2 源码、Python venv 与应用数据
+├── engines/classic-memes/     # C1 渲染器，以及 C1/B3 模板和来源清单
 ├── resources/fonts/
 ├── resources/images/
 ├── resources/qq-agent-trending/back_hand_opossum/
@@ -80,6 +87,8 @@ npm run setup:meme -- --builtin-only
 ```bash
 npm run setup:meme -- --skip-contrib
 ```
+
+只更新本次选定的 B1/B2/B3/C1，可执行 `npm run setup:meme -- --expanded-only`；若明确不安装这四组，可在完整安装时追加 `--skip-expanded`。B2 模板键使用 `tudou_` 前缀，B3 使用 `gengtu_`，C1 使用 `classic_`；日常也可以直接用中文名或英文名搜索。原生 B1 模板保持上游键名。
 
 ### 打包版数据目录
 
@@ -162,9 +171,9 @@ node scripts/install-meme-extension.mjs \
 
 ## 故障排查
 
-### `#meme 状态` 的模板数少于 744
+### `#meme 状态` 的模板数少于 1544
 
-约 299 个表示只加载了官方内置模板；约 723 个表示 `meme-emoji` 已加载、但 contrib 和近期热梗包尚未全部加载；733 个表示只缺少近期热梗包。执行 `brew install rustup` 后重新运行 `npm run setup:meme`，确认命令完成并重启 QQ Agent。
+780 个表示 B1 已进入原生引擎，但 B2/B3/C1 独立引擎没有完成加载。执行 `brew install rustup`，确认 Python 3.9+ 可用，再重新运行 `npm run setup:meme` 并重启 QQ Agent。`#meme 状态` 会分别显示 native、tudou、gengtu、classic 的数量，便于定位缺少的来源。
 
 ### 提示“找不到唯一模板”
 

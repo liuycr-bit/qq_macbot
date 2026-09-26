@@ -2,11 +2,11 @@
 
 更新时间：2026-09-26。
 
-这份清单同时记录已经装入 QQ Agent 的近期热梗、仅增加关键词的别名，以及从 GitHub 找到但尚未导入的模板源。搜索过程**没有按 NSFW 内容过滤**；是否启用由部署者最终决定。模板数量来自各项目当前清单或仓库结构，后续上游更新可能改变。
+这份清单同时记录已经装入 QQ Agent 的近期热梗、仅增加关键词的别名，以及从 GitHub 找到的其他模板源。搜索过程**没有按 NSFW 内容过滤**；是否启用由部署者最终决定。按用户本轮选择，只接入 B1、B2、B3、C1，其他来源明确不接入。
 
 ## 当前已安装：N1–N8
 
-下面 11 个模板由本仓库的 `qq-agent-trending-memes-rs` 原生扩展提供，已经计入当前 **744 个模板**。
+下面 11 个模板由本仓库的 `qq-agent-trending-memes-rs` 原生扩展提供，已经计入当前 **1544 个模板**。
 
 | 编号 | 模板键 | 可用关键词 | 输入 | 实现与来源 |
 |---|---|---|---|---|
@@ -24,7 +24,7 @@
 
 ## 当前已安装：A1–A7 热词别名
 
-这一组不复制模板图片，只把近期说法稳定路由到现有模板，因此不增加 744 的模板数量。
+这一组不复制模板图片，只把近期说法稳定路由到现有模板，因此不增加 1544 的模板数量。
 
 | 编号 | 新关键词 | 现有模板键 |
 |---|---|---|
@@ -36,13 +36,14 @@
 | A6 | 红温了、汗流浃背了 | `flush` |
 | A7 | 我勒个豆、家人谁懂啊、被拿捏了 | `peas`、`family_know`、`tease` |
 
-## 第一优先级：可直接或较容易接入现有引擎
+## 已接入：B1、B2、B3、C1
 
 ### B1. anyliew/crazy-emoji
 
 - 来源：[anyliew/crazy-emoji](https://github.com/anyliew/crazy-emoji)
+- 状态：**已接入**，固定提交 `51f6a21`。
 - 许可：MIT；图片素材仍需遵守上游的素材声明。
-- 规模：38 个 Rust 扩展模板；与当前 744 个模板按键比较，`huochailu`、`moistening_water` 已存在，约 **36 个新键**。
+- 规模：38 个 Rust 扩展模板；`huochailu`、`moistening_water` 与既有键重复，实际为原生引擎增加 **36 个键**。
 - 适配：与当前 `meme-generator-rs` 动态库路线一致，优先级最高。
 - 内容：包含成人用品、性暗示和动作类模板；清单不作过滤。
 
@@ -92,13 +93,14 @@
 ### B2. LRZ9712/tudou-meme
 
 - 来源：[LRZ9712/tudou-meme](https://github.com/LRZ9712/tudou-meme)
+- 状态：**已接入**，固定提交 `016f46b`，使用独立 Python 子进程。
 - 许可：MIT；它也被 `MemeCrafters/meme-generator` 官方 README 列为“其他表情仓库”。
-- 规模：当前仓库中有 **120 个模板模块**。
-- 适配：属于 Python 版 `meme-generator` 扩展，素材和布局可以迁移，但要改写为 Rust 扩展；与当前模板存在部分重复，例如 `huochailu`、`niulai`。
+- 规模：固定提交实际发现 **122 个可加载模块**；其中两个位于上游嵌套目录，两个模块共享 `huanying` 内部键，QQ Agent 为它们分配独立公开键并全部保留。
+- 适配：保留 Python 版 `meme-generator` 实现，由 Worker 启动独立子进程，不阻塞 QQ Agent 主进程；公开键统一使用 `tudou_` 前缀。
 - 内容：包含 NSFW、排泄物、性暗示和粗俗内容，以下不删减。
 
 <details>
-<summary>展开 120 个模板目录名</summary>
+<summary>展开上游记录的模板目录名（固定提交另含两个嵌套模块）</summary>
 
 `3p`、`aichuai`、`beiwodao`、`cha`、`doro臭美`、`duidi`、`fangpi`、`huanying`、`huanying2`、`huanying3`、`huanying被戳`、`huochailu`、`jibao`、`kaimen`、`katitia_holdsign`、`kou`、`llq`、`maomaochong`、`moni`、`nailongpao`、`nantongjue`、`niulai`、`nizhejiah`、`nvtongjue`、`pao`、`pingdiguo`、`qi`、`qian`、`qilongwang`、`qiu`、`shouxie`、`shuai`、`shuainiuzi`、`shuaiqunwu`、`wanju`、`wanweiba`、`wodeniuniu`、`wudizhen`、`yao`、`zaoleipi`、`zixingche`、`zuo`、`仓鼠亲`、`你出生了`、`兔哈郎`、`全自动`、`关冰箱`、`割鸡鸡`、`去o屎`、`吃屎`、`吃我一锤`、`哥们抱`、`嘬嘬嘬`、`嘬高跟`、`噜噜喂猪`、`噜噜骑狗`、`大便攻击`、`导冒烟`、`导爆`、`小熊帽子`、`巨物`、`带走`、`弹牛子`、`懵逼猫`、`我有意见`、`我来了`、`戳死你`、`打气`、`打气球`、`扔屎`、`托尼`、`抓咪`、`抓头`、`拉屎`、`拍你头`、`拖垃圾`、`拖垃圾人`、`招牌`、`挠挠头`、`捏兔帽`、`捏鸡蛋`、`揪咪`、`摇子`、`桌角`、`正在找你`、`汉堡耄耋`、`没意见`、`渔网袜`、`熊骑`、`牛牛打球`、`猛撅`、`猪舞`、`猫咪膜拜`、`猫猫撅`、`王`、`玩火`、`甩鸡鸡`、`白嫖怪`、`睡不着`、`耄耋篮球`、`舔咪`、`舔屁股`、`蠕动`、`跑步机`、`跳劈`、`跳绳`、`跳舞猫`、`踩人`、`蹲马桶`、`这边请`、`遛狗`、`鞭打`、`鞭策`、`飞鸡`、`骑恐龙`、`骑熊`、`骑猪`、`骑猫`、`鲁鲁喂猪`、`鲁鲁骑猪`
 
@@ -107,32 +109,43 @@
 ### B3. cholf5/gengtu
 
 - 来源：[cholf5/gengtu](https://github.com/cholf5/gengtu)
+- 状态：**已接入**，固定提交 `cd17bfa`，公开键使用 `gengtu_` 前缀。
 - 许可：MIT。
 - 规模：32 个图片加 JSON 坐标模板。
-- 适配：需要把 JSON 文本框规则转成当前 Rust 模板；大部分是经典静态梗图。`食屎啦你` 与当前 `shishilani` 语义重复。
+- 适配：安装时把 JSON 文本框规则转换成 C1 本地模板包；大部分是经典静态梗图。`食屎啦你` 与当前 `shishilani` 语义重复。
 
 完整模板键：
 
 `atlas-holding-earth`、`batman-slapping-robin`、`bike-fall`、`bow-down`、`change-my-mind`、`comrade-wake-up`、`crazy-fans`、`dam`、`distracted-boyfriend`、`do-whatever-you-want`、`drake-hotline-bling`、`fan-club-support`、`grave-victory`、`horse-drawing`、`hysterical-arguments`、`iceberg`、`left-exit-12-off-ramp`、`leonardo-laugh`、`linus-fuck`、`ma-huateng-think`、`meloni-slap-trump`、`mother-ignoring-kid-drowning-in-a-pool`、`scooby-doo-mask-reveal`、`squid-game`、`support-tower`、`terminator-and-fear-girl`、`trump-blank-executive-order`、`two-buttons`、`whisper-and-goosebumps`、`yhorm-dark-souls`、`你尽管-算我输`、`食屎啦你`
 
+### C1. kartikkabadi/meme-maker
+
+- 来源：[kartikkabadi/meme-maker](https://github.com/kartikkabadi/meme-maker)
+- 状态：**已接入**，固定提交 `0e8531e`，公开键使用 `classic_` 前缀。
+- 规模：610 个模板；与 B3 合并后的本地 manifest 共 642 条。
+- 适配：本地 CLI 作为 Worker 的独立子进程运行；保留上游 `CREDITS.md`、逐模板来源和素材条款。
+
+## 不接入：其余候选
+
+以下来源保留为调研记录，但按本轮选择**不安装、不下载、不加入运行时模板清单**。
+
 ### B4. Python 版 MemeCrafters 上游差异
 
 - 来源：[MemeCrafters/meme-generator](https://github.com/MemeCrafters/meme-generator)
-- 对比当前 Rust 版 744 个模板后，真正值得补的模板是：
+- 对比原 Rust 模板后曾记录的差异是：
   - `not_call_me`：关键词“不喊我”，默认文案“开银趴不喊我是吧”；
   - `play`：关键词“顶、玩”，需要 1 张图片；
   - `top_notch`：关键词“顶尖”，默认文案“运营”。
 - `bluearchive`≈当前 `batitle`，`my_friend`≈当前 `my_friend_say`，`gif_subtitle` 是聚合模块，不作为新模板。
 
-## 第二优先级：大型本地模板库
+## 未接入的大型本地模板库
 
 这些项目不是现成的 `meme-generator-rs` 动态库，但能提供大量真正不同的模板。导入前应先自动比对感知哈希、文本槽位和来源许可。
 
 | 编号 | 项目 | 当前规模 | 特点 | 接入判断 |
 |---|---|---:|---|---|
-| C1 | [kartikkabadi/meme-maker](https://github.com/kartikkabadi/meme-maker) | manifest 当前 610 条；README 标注 609（546 静态、63 GIF） | 本地优先、JSON 槽位、CLI/MCP/HTTP；每模板带来源字段并有 `CREDITS.md` | **最适合做下一批大规模导入**；MIT 代码，但大量素材标为 fair-use，需保留逐模板来源 |
 | C2 | [jstmemit/jstmemit](https://github.com/jstmemit/jstmemit) | 769 个 TSX 模板文件 | 经典梗、动漫梗很多，模板可声明多图、多文字和本地化名称 | MIT；需把 JSX/SVG 合成逻辑迁移到当前 Worker，工作量中高 |
-| C3 | [baoxinwen/meme-maker](https://github.com/baoxinwen/meme-maker) | 327 个 `data.json` 模板目录 | 中文、GIF、头像槽位丰富，纯浏览器本地生成 | MIT 只覆盖代码，项目明确说图片和字体不在 MIT 范围；与当前 744 重合度可能很高，先做差异扫描 |
+| C3 | [baoxinwen/meme-maker](https://github.com/baoxinwen/meme-maker) | 327 个 `data.json` 模板目录 | 中文、GIF、头像槽位丰富，纯浏览器本地生成 | MIT 只覆盖代码，项目明确说图片和字体不在 MIT 范围；与当前模板重合度可能很高 |
 | C4 | [wasabipesto/automeme](https://github.com/wasabipesto/automeme) | 99 个 JSON 模板 | Rust 引擎、模板坐标结构清楚、README 逐图记录来源 | MIT；主要是英文经典梗，迁移难度中等 |
 | C5 | [julianbrandt/MemePy](https://github.com/julianbrandt/MemePy) | 24 个内置模板 | 结构简单，包含 Balloon、TradeOffer、BellCurve、PredatorHandshake 等 | MIT；数量小且部分重复，适合按缺口挑选 |
 | C6 | [gsantner/memetastic](https://github.com/gsantner/memetastic) | 48 张内置素材 | 成熟 Android 项目的经典梗图库，另有素材来源说明 | GPL-3.0；不建议直接混入 MIT 扩展代码，可只作为人工找图线索 |
@@ -160,12 +173,4 @@
 - [cssxsh/meme-helper](https://github.com/cssxsh/meme-helper)：Mirai 侧帮助插件，主要连接 petpet 数据生态；
 - [kozko2001/meme-generator-mcp](https://github.com/kozko2001/meme-generator-mcp)：把 memegen.link 的模板包装成 MCP，并不提供另一套独立素材。
 
-## 建议的下一轮选择顺序
-
-1. **B1 `crazy-emoji`**：几乎可以沿用现有编译、安装和动态加载机制，约 36 个新模板，投入产出最高。
-2. **B2 `tudou-meme`**：中文、近期、数量多，先按目录和图片感知哈希去重，再分批迁移。
-3. **C1 `kartikkabadi/meme-maker`**：用于补齐英文经典梗和 GIF；导入时逐模板保留来源与许可，不整包模糊授权。
-4. **B3 + B4**：体量小、容易人工审核，可作为补缺批次。
-5. **C2/C3**：规模大但转换和去重成本高，适合在前述来源完成后再做。
-
-远程 API 类来源只用于发现候选，不改变 QQ Agent 现在的本地生成、独立 Worker、应用数据目录和 OneBot 发送路径。
+远程 API 类来源和上表其他仓库均未接入。当前运行时只包含原有来源以及本轮明确选择的 B1、B2、B3、C1；本地生成、独立 Worker/子进程、应用数据目录和 OneBot 发送路径保持不变。
